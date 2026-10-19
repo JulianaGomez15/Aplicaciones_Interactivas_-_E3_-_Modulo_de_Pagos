@@ -18,7 +18,7 @@ export default function Login({onSession}) {
         try {
             const data = await login(username, password);
             setError(null);
-            onSession({token: data.token, username: data.username, rol: data.rol});
+            onSession({token: data.token, username: data.username, roles: data.roles});
         } catch (err) {
             setError(err);
         }
@@ -27,16 +27,17 @@ export default function Login({onSession}) {
     return (
         <section className="card narrow">
             <h2>Ingresar</h2>
-            <p className="muted">Cuentas de demo (cada rol ve solo lo que le corresponde):</p>
+            <p className="muted">Cuentas de demo; cada rol ve y puede hacer solo lo que le corresponde.</p>
             <div className="chips">
                 {CUENTAS.map((c) => (
-                    <button type="button" key={c.username}
+                    <button type="button" key={c.username} title={c.descripcion}
                             className={c.username === username ? 'chip active' : 'chip'}
                             onClick={() => elegirCuenta(c)}>
-                        {c.username} · {c.rol}
+                        {c.username}
                     </button>
                 ))}
             </div>
+            <p className="muted">{CUENTAS.find((c) => c.username === username)?.descripcion}</p>
             <form onSubmit={entrar} className="stack">
                 <label>Usuario
                     <input value={username} onChange={(e) => setUsername(e.target.value)}/>

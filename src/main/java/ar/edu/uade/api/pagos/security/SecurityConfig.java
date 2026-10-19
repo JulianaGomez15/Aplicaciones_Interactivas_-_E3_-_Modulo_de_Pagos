@@ -22,6 +22,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
+import static ar.edu.uade.api.pagos.security.CuentasDemo.*;
+
 @Configuration
 public class SecurityConfig {
 
@@ -35,8 +37,8 @@ public class SecurityConfig {
         this.errorHandler = errorHandler;
     }
 
-    // Roles: ADMIN, PEDIDOS (Servicio de Pedidos), ANALISTA, CLIENTE (Portal Web).
-    // El orden de las reglas importa: gana la primera que coincide.
+    // Autorizacion por rol segun la tabla "Seguridad y autorizacion por rol" del TPO.
+    // El orden importa: gana la primera regla que coincide.
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf(csrf -> csrf.disable())
@@ -50,21 +52,24 @@ public class SecurityConfig {
                                 "/h2-console/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // Escrituras sobre pagos: iniciar, aprobar, rechazar, reembolsar.
-                        .requestMatchers(HttpMethod.POST, PAGOS, PAGOS + "/*/approve", PAGOS + "/*/reject",
-                                PAGOS + "/*/refund").hasAnyRole("ADMIN", "PEDIDOS")
+                        // API-01, API-02, API-03
+                        .requestMatchers(HttpMethod.POST, PAGOS, PAGOS + "/*/approve", PAGOS + "/*/reject")
+                        .hasRole(SERVICIO_ESCRITURA)
+                        // API-05
+                        .requestMatchers(HttpMethod.POST, PAGOS + "/*/refund")
+                        .hasAnyRole(SERVICIO_ESCRITURA, ADMINISTRADOR)
+                        // API-06 (tambien CU-07, que filtra por codigoPedido)
+                        .requestMatchers(HttpMethod.GET, PAGOS)
+                        .hasAnyRole(ADMINISTRADOR, ANALISTA, SERVICIO_LECTURA)
+                        // API-08
+                        .requestMatchers(HttpMethod.GET, PAGOS + "/*/history").hasRole(ADMINISTRADOR)
+                        // API-04 (un CLIENTE solo ve sus pagos: lo controla el Service)
+                        .requestMatchers(HttpMethod.GET, PAGOS + "/*")
+                        .hasAnyRole(CLIENTE, ADMINISTRADOR, SERVICIO_LECTURA)
+                        // API-07
+                        .requestMatchers(HttpMethod.POST, "/api/v1/payment-methods").hasRole(CLIENTE)
 
-                        // Auditoria / trazabilidad.
-                        .requestMatchers(HttpMethod.GET, PAGOS, PAGOS + "/order/*", PAGOS + "/*/history")
-                        .hasAnyRole("ADMIN", "ANALISTA")
-                        .requestMatchers(HttpMethod.GET, PAGOS + "/*/refunds", "/api/v1/refunds/*")
-                        .hasAnyRole("ADMIN", "ANALISTA", "PEDIDOS")
-
-                        // Consulta de un pago: cualquier usuario autenticado.
-                        .requestMatchers(HttpMethod.GET, PAGOS + "/*").authenticated()
-
-                        .requestMatchers("/api/v1/payment-methods/**").hasAnyRole("ADMIN", "CLIENTE")
-                        .anyRequest().authenticated())
+                        .anyRequest().denyAll())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
@@ -74,18 +79,14 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    // Usuarios de demo (solo academico).
+    // Solo para el login de demo (/auth/login). La validacion real de cada request es por firma del JWT.
     @Bean
     UserDetailsService users(PasswordEncoder encoder) {
-        return new InMemoryUserDetailsManager(
-                demo(encoder, "admin", "admin123", "ADMIN"),
-                demo(encoder, "pedidos", "pedidos123", "PEDIDOS"),
-                demo(encoder, "analista", "analista123", "ANALISTA"),
-                demo(encoder, "cliente", "cliente123", "CLIENTE"));
-    }
-
-    private UserDetails demo(PasswordEncoder encoder, String username, String password, String rol) {
-        return User.withUsername(username).password(encoder.encode(password)).roles(rol).build();
+        List<UserDetails> usuarios = CUENTAS.stream()
+                .map(c -> User.withUsername(c.username()).password(encoder.encode(c.password()))
+                        .roles(c.roles().toArray(new String[0])).build())
+                .toList();
+        return new InMemoryUserDetailsManager(usuarios);
     }
 
     @Bean

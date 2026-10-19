@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.List;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -36,17 +35,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         try {
-            String token = header.substring(7);
-            String username = jwtService.obtenerUsername(token);
-            String rol = jwtService.obtenerRol(token);
+            JwtPrincipal principal = jwtService.leer(header.substring(7));
 
-            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (principal.getUsername() != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 SecurityContextHolder.getContext().setAuthentication(
-                        new UsernamePasswordAuthenticationToken(username, null,
-                                List.of(new SimpleGrantedAuthority("ROLE_" + rol))));
+                        new UsernamePasswordAuthenticationToken(principal, null,
+                                principal.getRoles().stream()
+                                        .map(r -> new SimpleGrantedAuthority("ROLE_" + r)).toList()));
             }
         } catch (JwtException | IllegalArgumentException ex) {
-            // Token invalido o vencido: no se autentica, el entry point responde 401.
+            // Token invalido, vencido o con claims mal formados: no se autentica, el entry point responde 401.
             SecurityContextHolder.clearContext();
         }
 

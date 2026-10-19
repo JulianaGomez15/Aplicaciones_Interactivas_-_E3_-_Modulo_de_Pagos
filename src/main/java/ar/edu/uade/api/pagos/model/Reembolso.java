@@ -7,17 +7,17 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "reembolsos")
+@Table(name = "reembolso")
 public class Reembolso {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, updatable = false)
-    private UUID codigo;
+    @Column(name = "codigo_reembolso", nullable = false, unique = true, updatable = false)
+    private UUID codigoReembolso;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pago_id", nullable = false)
     private Pago pago;
 
@@ -31,31 +31,49 @@ public class Reembolso {
     @Column(nullable = false, length = 20)
     private EstadoReembolso estado;
 
-    @Column(nullable = false)
-    private LocalDateTime fecha;
+    // RN-10: un reembolso repetido con la misma clave devuelve el existente.
+    @Column(name = "clave_control", nullable = false, unique = true)
+    private String claveControl;
+
+    @Column(name = "fecha_solicitud", nullable = false)
+    private LocalDateTime fechaSolicitud;
+
+    @Column(name = "fecha_resolucion")
+    private LocalDateTime fechaResolucion;
 
     protected Reembolso() {
     }
 
-    public Reembolso(BigDecimal monto, String motivo) {
-        this.codigo = UUID.randomUUID();
+    // El reembolso es simulado: se solicita y se resuelve (APROBADO) en el mismo instante.
+    public Reembolso(BigDecimal monto, String motivo, String claveControl) {
         this.monto = monto;
         this.motivo = motivo;
-        this.estado = EstadoReembolso.APROBADO; // simulado
-        this.fecha = LocalDateTime.now();
+        this.claveControl = claveControl;
+        this.estado = EstadoReembolso.APROBADO;
+        this.fechaSolicitud = LocalDateTime.now();
+        this.fechaResolucion = this.fechaSolicitud;
+    }
+
+    @PrePersist
+    void prePersist() {
+        if (codigoReembolso == null) {
+            codigoReembolso = UUID.randomUUID();
+        }
     }
 
     public Long getId() { return id; }
-    public UUID getCodigo() { return codigo; }
+    public UUID getCodigoReembolso() { return codigoReembolso; }
     public Pago getPago() { return pago; }
     void setPago(Pago pago) { this.pago = pago; }
     public BigDecimal getMonto() { return monto; }
     public String getMotivo() { return motivo; }
     public EstadoReembolso getEstado() { return estado; }
-    public LocalDateTime getFecha() { return fecha; }
+    public String getClaveControl() { return claveControl; }
+    public LocalDateTime getFechaSolicitud() { return fechaSolicitud; }
+    public LocalDateTime getFechaResolucion() { return fechaResolucion; }
 
     @Override
     public String toString() {
-        return "Reembolso{id=" + id + ", codigo=" + codigo + ", monto=" + monto + "}";
+        return "Reembolso{id=" + id + ", codigoReembolso=" + codigoReembolso + ", monto=" + monto + "}";
     }
 }

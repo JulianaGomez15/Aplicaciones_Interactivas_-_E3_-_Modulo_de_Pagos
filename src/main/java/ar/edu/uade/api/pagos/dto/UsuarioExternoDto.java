@@ -2,7 +2,7 @@ package ar.edu.uade.api.pagos.dto;
 
 import java.util.UUID;
 
-// Vista de un usuario tal como lo informa el Servicio de Usuarios y Autenticacion (modulo vecino).
+// Vista de un usuario tal como lo informa el Servicio de Usuarios (INT-02).
 public class UsuarioExternoDto {
 
     private final UUID codigoUsuario;

@@ -1,14 +1,14 @@
 package ar.edu.uade.api.pagos.integration;
 
-import ar.edu.uade.api.pagos.dto.PagoDto;
-import ar.edu.uade.api.pagos.dto.ReembolsoDto;
+import ar.edu.uade.api.pagos.dto.PagoResponse;
+import ar.edu.uade.api.pagos.dto.ReembolsoResponse;
 
-// Contrato contra el Servicio de Notificaciones (INT-03).
+// INT-03: POST /api/v1/notifications en el Servicio de Notificaciones.
 public interface NotificacionesClient {
 
-    void enviarComprobantePago(PagoDto pago);
+    void enviarComprobantePago(PagoResponse pago);
 
-    void enviarAvisoRechazo(PagoDto pago, String motivo);
+    void enviarAvisoRechazo(PagoResponse pago, String motivo);
 
-    void enviarComprobanteReembolso(PagoDto pago, ReembolsoDto reembolso);
+    void enviarComprobanteReembolso(PagoResponse pago, ReembolsoResponse reembolso);
 }

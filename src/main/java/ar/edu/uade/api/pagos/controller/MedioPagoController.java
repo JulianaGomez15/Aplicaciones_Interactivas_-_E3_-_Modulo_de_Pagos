@@ -1,41 +1,34 @@
 package ar.edu.uade.api.pagos.controller;
 
-import ar.edu.uade.api.pagos.dto.MedioPagoDto;
-import ar.edu.uade.api.pagos.dto.MedioPagoRequestDto;
-import ar.edu.uade.api.pagos.services.MedioPagoServices;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import ar.edu.uade.api.pagos.dto.MedioPagoRequest;
+import ar.edu.uade.api.pagos.dto.MedioPagoResponse;
+import ar.edu.uade.api.pagos.security.JwtPrincipal;
+import ar.edu.uade.api.pagos.services.MedioPagoService;
+import io.swagger.v3.oas.annotations.Parameter;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.UUID;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/payment-methods")
-@Tag(name = "Medios de pago", description = "CU-08: medios de pago simulados (solo detalle enmascarado)")
-@SecurityRequirement(name = "bearerAuth")
-public class MedioPagoController {
+public class MedioPagoController implements IMedioPagoController {
 
-    private final MedioPagoServices medioPagoServices;
+    private final MedioPagoService medioPagoService;
 
-    public MedioPagoController(MedioPagoServices medioPagoServices) {
-        this.medioPagoServices = medioPagoServices;
+    public MedioPagoController(MedioPagoService medioPagoService) {
+        this.medioPagoService = medioPagoService;
     }
 
-    @Operation(summary = "Registrar medio de pago",
-            description = "Tipos: TARJETA_CREDITO, TARJETA_DEBITO, BILLETERA_VIRTUAL, TRANSFERENCIA. "
-                    + "400 PAYMENT_METHOD_INVALID si el tipo o el detalle no son validos. Roles: ADMIN, CLIENTE.")
+    @Override
     @PostMapping
-    public ResponseEntity<MedioPagoDto> crear(@RequestBody MedioPagoRequestDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(medioPagoServices.crearMedioPago(dto));
-    }
-
-    @Operation(summary = "Listar medios de pago de un usuario", description = "Roles: ADMIN, CLIENTE.")
-    @GetMapping
-    public ResponseEntity<List<MedioPagoDto>> listar(@RequestParam UUID codigoUsuario) {
-        return ResponseEntity.ok(medioPagoServices.listarPorUsuario(codigoUsuario));
+    public ResponseEntity<MedioPagoResponse> registrar(@Valid @RequestBody MedioPagoRequest dto,
+                                                       @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(medioPagoService.registrarMedioPago(principal.getCodigoUsuario(), dto));
     }
 }

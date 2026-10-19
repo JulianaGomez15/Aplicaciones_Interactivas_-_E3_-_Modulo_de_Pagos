@@ -1,12 +1,12 @@
 import {useState} from 'react';
-import {pagosPorPedido} from '../services/pagosService.js';
-import {corto, formatoMonto, PEDIDOS} from '../data/demo.js';
+import {listarPagos} from '../services/pagosService.js';
+import {corto, formatoMonto, PEDIDOS, tieneRol} from '../data/demo.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import PagoDetalle, {EstadoBadge} from '../components/PagoDetalle.jsx';
 
-// CU-04 (por codigo de pago) y CU-07 (por pedido, solo ADMIN / ANALISTA).
+// CU-04 (por codigo de pago; un cliente solo ve los suyos) y CU-07 (por pedido, requiere permiso de listado).
 export default function ConsultaPage({session}) {
-    const puedePorPedido = session.rol === 'ADMIN' || session.rol === 'ANALISTA';
+    const puedePorPedido = tieneRol(session, 'ADMINISTRADOR', 'ANALISTA', 'SERVICIO_LECTURA');
 
     const [codigoPago, setCodigoPago] = useState('');
     const [consultado, setConsultado] = useState(null);
@@ -18,7 +18,8 @@ export default function ConsultaPage({session}) {
     async function buscarPorPedido(e) {
         e.preventDefault();
         try {
-            setPagosPedido(await pagosPorPedido(session.token, codigoPedido));
+            const pagina = await listarPagos(session.token, {codigoPedido, size: 50, sort: 'fechaCreacion,desc'});
+            setPagosPedido(pagina.content);
             setError(null);
         } catch (err) {
             setPagosPedido(null);
@@ -41,7 +42,7 @@ export default function ConsultaPage({session}) {
 
                 {puedePorPedido && (
                     <>
-                        <h3>Pagos de un pedido</h3>
+                        <h3>Intentos de pago de un pedido</h3>
                         <form className="inline" onSubmit={buscarPorPedido}>
                             <select className="grow" value={codigoPedido} onChange={(e) => setCodigoPedido(e.target.value)}>
                                 {PEDIDOS.map((p) => (
@@ -58,20 +59,21 @@ export default function ConsultaPage({session}) {
                                 <thead><tr><th>Código</th><th>Monto</th><th>Estado</th><th/></tr></thead>
                                 <tbody>
                                 {pagosPedido.map((p) => (
-                                    <tr key={p.codigo}>
-                                        <td title={p.codigo}>{corto(p.codigo)}…</td>
+                                    <tr key={p.codigoPago}>
+                                        <td title={p.codigoPago}>{corto(p.codigoPago)}…</td>
                                         <td>{formatoMonto(p.monto)}</td>
                                         <td><EstadoBadge estado={p.estado}/></td>
-                                        <td><button className="chip" onClick={() => setConsultado(p.codigo)}>Ver</button></td>
+                                        <td><button className="chip" onClick={() => setConsultado(p.codigoPago)}>Ver</button></td>
                                     </tr>
                                 ))}
+                                {pagosPedido.length === 0 && <tr><td colSpan="4" className="muted">El pedido no tiene pagos</td></tr>}
                                 </tbody>
                             </table>
                         )}
                     </>
                 )}
             </section>
-            {consultado && <PagoDetalle key={consultado} session={session} codigo={consultado}/>}
+            {consultado && <PagoDetalle key={consultado} session={session} codigoPago={consultado}/>}
         </>
     );
 }

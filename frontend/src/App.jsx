@@ -5,13 +5,15 @@ import PagosPage from './pages/PagosPage.jsx';
 import ConsultaPage from './pages/ConsultaPage.jsx';
 import MediosPagoPage from './pages/MediosPagoPage.jsx';
 
-// Pestañas visibles por rol (el backend es quien hace cumplir los permisos).
+// Pestañas visibles por rol, segun la tabla de autorizacion del TPO (el backend es quien hace cumplir los permisos).
 const TABS = [
-    {id: 'nuevo', titulo: 'Iniciar pago', roles: ['ADMIN', 'PEDIDOS'], Page: NuevoPagoPage},
-    {id: 'pagos', titulo: 'Pagos', roles: ['ADMIN', 'ANALISTA'], Page: PagosPage},
-    {id: 'consulta', titulo: 'Consultar', roles: ['ADMIN', 'PEDIDOS', 'ANALISTA', 'CLIENTE'], Page: ConsultaPage},
-    {id: 'medios', titulo: 'Medios de pago', roles: ['ADMIN', 'CLIENTE'], Page: MediosPagoPage}
+    {id: 'nuevo', titulo: 'Iniciar pago', roles: ['SERVICIO_ESCRITURA'], Page: NuevoPagoPage},
+    {id: 'pagos', titulo: 'Pagos', roles: ['ADMINISTRADOR', 'ANALISTA', 'SERVICIO_LECTURA'], Page: PagosPage},
+    {id: 'consulta', titulo: 'Consultar', roles: ['CLIENTE', 'ADMINISTRADOR', 'SERVICIO_LECTURA'], Page: ConsultaPage},
+    {id: 'medios', titulo: 'Medios de pago', roles: ['CLIENTE'], Page: MediosPagoPage}
 ];
+
+const visibles = (s) => TABS.filter((t) => t.roles.some((r) => s.roles.includes(r)));
 
 export default function App() {
     const [session, setSession] = useState(null);
@@ -19,7 +21,7 @@ export default function App() {
 
     function entrar(s) {
         setSession(s);
-        setTabId(TABS.find((t) => t.roles.includes(s.rol)).id);
+        setTabId(visibles(s)[0]?.id ?? null);
     }
 
     function salir() {
@@ -27,7 +29,7 @@ export default function App() {
         setTabId(null);
     }
 
-    const tabs = session ? TABS.filter((t) => t.roles.includes(session.rol)) : [];
+    const tabs = session ? visibles(session) : [];
     const activa = tabs.find((t) => t.id === tabId);
 
     return (
@@ -39,7 +41,7 @@ export default function App() {
                 </div>
                 {session && (
                     <div className="session">
-                        <span>{session.username} <span className="badge role">{session.rol}</span></span>
+                        <span>{session.username} {session.roles.map((r) => <span key={r} className="badge role">{r}</span>)}</span>
                         <button className="chip" onClick={salir}>Salir</button>
                     </div>
                 )}

@@ -1,15 +1,23 @@
 package ar.edu.uade.api.pagos.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.LocalDateTime;
 
-public class HistorialEstadoPagoDto {
+// DTO-09
+@Schema(description = "Un cambio de estado del pago")
+public class HistorialEstadoResponse {
 
+    @Schema(description = "Null en el alta del pago", nullable = true, example = "PENDIENTE")
     private final String estadoAnterior;
+
+    @Schema(example = "APROBADO")
     private final String estadoNuevo;
+
     private final String motivo;
     private final LocalDateTime fecha;
 
-    public HistorialEstadoPagoDto(String estadoAnterior, String estadoNuevo, String motivo, LocalDateTime fecha) {
+    public HistorialEstadoResponse(String estadoAnterior, String estadoNuevo, String motivo, LocalDateTime fecha) {
         this.estadoAnterior = estadoAnterior;
         this.estadoNuevo = estadoNuevo;
         this.motivo = motivo;

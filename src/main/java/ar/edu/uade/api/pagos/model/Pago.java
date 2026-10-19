@@ -1,5 +1,7 @@
 package ar.edu.uade.api.pagos.model;
 
+import ar.edu.uade.api.pagos.excepcion.ErrorCode;
+import ar.edu.uade.api.pagos.excepcion.PagoException;
 import jakarta.persistence.*;
 import org.hibernate.annotations.BatchSize;
 
@@ -10,7 +12,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "pagos")
+@Table(name = "pago")
 public class Pago {
 
     @Id
@@ -18,9 +20,10 @@ public class Pago {
     private Long id;
 
     // Identificador publico (se expone en la API); el id interno nunca sale.
-    @Column(nullable = false, unique = true, updatable = false)
-    private UUID codigo;
+    @Column(name = "codigo_pago", nullable = false, unique = true, updatable = false)
+    private UUID codigoPago;
 
+    // Referencias a otros modulos: UUID sin FK.
     @Column(name = "codigo_pedido", nullable = false)
     private UUID codigoPedido;
 
@@ -31,17 +34,17 @@ public class Pago {
     private BigDecimal monto;
 
     @Column(nullable = false, length = 3)
-    private String moneda = "ARS";
+    private String moneda;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private EstadoPago estado;
 
-    // RN-01: UNIQUE a nivel de base ademas de la validacion en el Service.
+    // RN-01: UNIQUE a nivel de base ademas de la validacion en el Service (cubre solicitudes simultaneas).
     @Column(name = "clave_control", nullable = false, unique = true)
     private String claveControl;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "medio_pago_id", nullable = false)
     private MedioPago medioPago;
 
@@ -53,29 +56,69 @@ public class Pago {
     @BatchSize(size = 50)
     private List<HistorialEstadoPago> historial = new ArrayList<>();
 
-    @Column(name = "fecha_creacion", nullable = false)
+    @Column(name = "fecha_creacion", nullable = false, updatable = false)
     private LocalDateTime fechaCreacion;
 
     @Column(name = "fecha_actualizacion", nullable = false)
     private LocalDateTime fechaActualizacion;
 
-    // Evita que dos operaciones concurrentes pisen el estado del mismo pago.
+    // DEC-05: bloqueo optimista para que dos operaciones simultaneas no generen dos transiciones.
     @Version
     private Long version;
 
     protected Pago() {
     }
 
-    public Pago(UUID codigoPedido, UUID codigoUsuario, BigDecimal monto, String claveControl, MedioPago medioPago) {
-        this.codigo = UUID.randomUUID();
+    public Pago(UUID codigoPedido, UUID codigoUsuario, BigDecimal monto, String moneda, String claveControl,
+                MedioPago medioPago) {
         this.codigoPedido = codigoPedido;
         this.codigoUsuario = codigoUsuario;
         this.monto = monto;
+        this.moneda = moneda;
         this.claveControl = claveControl;
         this.medioPago = medioPago;
         this.estado = EstadoPago.PENDIENTE;
-        this.fechaCreacion = LocalDateTime.now();
-        this.fechaActualizacion = this.fechaCreacion;
+    }
+
+    @PrePersist
+    void prePersist() {
+        if (codigoPago == null) {
+            codigoPago = UUID.randomUUID();
+        }
+        LocalDateTime ahora = LocalDateTime.now();
+        fechaCreacion = ahora;
+        fechaActualizacion = ahora;
+    }
+
+    @PreUpdate
+    void preUpdate() {
+        fechaActualizacion = LocalDateTime.now();
+    }
+
+    // ---- Reglas que dependen solo del estado (RN-04 y RN-06) ----
+
+    public void aprobar() {
+        transicionarA(EstadoPago.APROBADO);
+    }
+
+    public void rechazar() {
+        transicionarA(EstadoPago.RECHAZADO);
+    }
+
+    public void marcarReembolsado() {
+        transicionarA(EstadoPago.REEMBOLSADO);
+    }
+
+    public boolean puedeReembolsarse() {
+        return estado == EstadoPago.APROBADO;
+    }
+
+    private void transicionarA(EstadoPago destino) {
+        if (!estado.permiteTransicionA(destino)) {
+            throw new PagoException(ErrorCode.PAYMENT_INVALID_STATE,
+                    "Transicion invalida: " + estado + " -> " + destino);
+        }
+        this.estado = destino;
     }
 
     // Mantiene sincronizada la relacion bidireccional en memoria.
@@ -89,21 +132,8 @@ public class Pago {
         registro.setPago(this);
     }
 
-    public BigDecimal totalReembolsado() {
-        return reembolsos.stream().map(Reembolso::getMonto).reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    public BigDecimal montoDisponibleParaReembolso() {
-        return monto.subtract(totalReembolsado());
-    }
-
-    public void setEstado(EstadoPago estado) {
-        this.estado = estado;
-        this.fechaActualizacion = LocalDateTime.now();
-    }
-
     public Long getId() { return id; }
-    public UUID getCodigo() { return codigo; }
+    public UUID getCodigoPago() { return codigoPago; }
     public UUID getCodigoPedido() { return codigoPedido; }
     public UUID getCodigoUsuario() { return codigoUsuario; }
     public BigDecimal getMonto() { return monto; }
@@ -118,6 +148,6 @@ public class Pago {
 
     @Override
     public String toString() {
-        return "Pago{id=" + id + ", codigo=" + codigo + ", estado=" + estado + ", monto=" + monto + "}";
+        return "Pago{id=" + id + ", codigoPago=" + codigoPago + ", estado=" + estado + ", monto=" + monto + "}";
     }
 }

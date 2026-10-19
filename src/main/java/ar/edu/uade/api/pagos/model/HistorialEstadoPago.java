@@ -13,10 +13,10 @@ public class HistorialEstadoPago {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, updatable = false)
-    private UUID codigo;
+    @Column(name = "codigo_historial", nullable = false, unique = true, updatable = false)
+    private UUID codigoHistorial;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pago_id", nullable = false)
     private Pago pago;
 
@@ -39,15 +39,21 @@ public class HistorialEstadoPago {
     }
 
     public HistorialEstadoPago(EstadoPago estadoAnterior, EstadoPago estadoNuevo, String motivo) {
-        this.codigo = UUID.randomUUID();
         this.estadoAnterior = estadoAnterior;
         this.estadoNuevo = estadoNuevo;
         this.motivo = motivo;
         this.fecha = LocalDateTime.now();
     }
 
+    @PrePersist
+    void prePersist() {
+        if (codigoHistorial == null) {
+            codigoHistorial = UUID.randomUUID();
+        }
+    }
+
     public Long getId() { return id; }
-    public UUID getCodigo() { return codigo; }
+    public UUID getCodigoHistorial() { return codigoHistorial; }
     public Pago getPago() { return pago; }
     void setPago(Pago pago) { this.pago = pago; }
     public EstadoPago getEstadoAnterior() { return estadoAnterior; }

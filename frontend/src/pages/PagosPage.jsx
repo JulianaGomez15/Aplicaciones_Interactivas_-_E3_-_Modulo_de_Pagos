@@ -1,12 +1,12 @@
 import {useCallback, useEffect, useState} from 'react';
 import {listarPagos} from '../services/pagosService.js';
-import {corto, ESTADOS_PAGO, formatoFecha, formatoMonto, nombreUsuario, USUARIOS} from '../data/demo.js';
+import {corto, ESTADOS_PAGO, formatoFecha, formatoMonto, PEDIDOS, USUARIOS} from '../data/demo.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import PagoDetalle, {EstadoBadge} from '../components/PagoDetalle.jsx';
 
-// CU-06: listado paginado y filtrable.
+// CU-06 / CU-07: listado paginado y filtrable (el filtro por pedido devuelve los intentos de pago de ese pedido).
 export default function PagosPage({session}) {
-    const [filtros, setFiltros] = useState({estado: '', codigoUsuario: '', desde: '', hasta: ''});
+    const [filtros, setFiltros] = useState({estado: '', codigoUsuario: '', codigoPedido: '', desde: '', hasta: ''});
     const [size, setSize] = useState(10);
     const [sort, setSort] = useState('fechaCreacion,desc');
     const [page, setPage] = useState(0);
@@ -50,6 +50,15 @@ export default function PagosPage({session}) {
                             {USUARIOS.map((u) => <option key={u.codigo} value={u.codigo}>{u.nombre}</option>)}
                         </select>
                     </label>
+                    <label>Pedido
+                        <select value={filtros.codigoPedido}
+                                onChange={(e) => cambiarFiltro('codigoPedido', e.target.value)}>
+                            <option value="">Todos</option>
+                            {PEDIDOS.map((p) => (
+                                <option key={p.codigo} value={p.codigo}>…{p.codigo.slice(-1)} · {formatoMonto(p.total)}</option>
+                            ))}
+                        </select>
+                    </label>
                     <label>Desde
                         <input type="date" value={filtros.desde} onChange={(e) => cambiarFiltro('desde', e.target.value)}/>
                     </label>
@@ -79,19 +88,19 @@ export default function PagosPage({session}) {
                     <>
                         <table>
                             <thead>
-                            <tr><th>Código</th><th>Pedido</th><th>Usuario</th><th>Monto</th><th>Estado</th>
+                            <tr><th>Código</th><th>Pedido</th><th>Medio de pago</th><th>Monto</th><th>Estado</th>
                                 <th>Creado</th><th/></tr>
                             </thead>
                             <tbody>
                             {pagina.content.map((p) => (
-                                <tr key={p.codigo} className={p.codigo === seleccionado ? 'selected' : ''}>
-                                    <td title={p.codigo}>{corto(p.codigo)}…</td>
+                                <tr key={p.codigoPago} className={p.codigoPago === seleccionado ? 'selected' : ''}>
+                                    <td title={p.codigoPago}>{corto(p.codigoPago)}…</td>
                                     <td title={p.codigoPedido}>{corto(p.codigoPedido)}…</td>
-                                    <td>{nombreUsuario(p.codigoUsuario)}</td>
+                                    <td>{p.medioPago.tipo} · {p.medioPago.detalleEnmascarado}</td>
                                     <td>{formatoMonto(p.monto)}</td>
                                     <td><EstadoBadge estado={p.estado}/></td>
                                     <td>{formatoFecha(p.fechaCreacion)}</td>
-                                    <td><button className="chip" onClick={() => setSeleccionado(p.codigo)}>Ver</button></td>
+                                    <td><button className="chip" onClick={() => setSeleccionado(p.codigoPago)}>Ver</button></td>
                                 </tr>
                             ))}
                             {pagina.content.length === 0 && <tr><td colSpan="7" className="muted">Sin resultados</td></tr>}
@@ -108,7 +117,7 @@ export default function PagosPage({session}) {
                 )}
             </section>
             {seleccionado && (
-                <PagoDetalle key={seleccionado} session={session} codigo={seleccionado} onChanged={cargar}/>
+                <PagoDetalle key={seleccionado} session={session} codigoPago={seleccionado} onChanged={cargar}/>
             )}
         </>
     );

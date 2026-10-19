@@ -3,7 +3,7 @@ package ar.edu.uade.api.pagos.dto;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-// Vista de un pedido tal como lo informa el Servicio de Pedidos (modulo vecino).
+// Vista de un pedido tal como lo informa el Servicio de Pedidos (INT-01).
 public class PedidoExternoDto {
 
     private final UUID codigoPedido;

@@ -1,8 +1,14 @@
 package ar.edu.uade.api.pagos.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(description = "Credenciales de demo")
 public class LoginDto {
 
+    @Schema(example = "api-pedidos")
     private String username;
+
+    @Schema(example = "pedidos123")
     private String password;
 
     public LoginDto() {

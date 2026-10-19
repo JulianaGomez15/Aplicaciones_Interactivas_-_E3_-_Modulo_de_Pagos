@@ -7,5 +7,5 @@ import java.util.List;
 import java.util.UUID;
 
 public interface HistorialEstadoPagoRepository extends JpaRepository<HistorialEstadoPago, Long> {
-    List<HistorialEstadoPago> findByPagoCodigoOrderByFechaAscIdAsc(UUID codigoPago);
+    List<HistorialEstadoPago> findByPagoCodigoPagoOrderByFechaAscIdAsc(UUID codigoPago);
 }

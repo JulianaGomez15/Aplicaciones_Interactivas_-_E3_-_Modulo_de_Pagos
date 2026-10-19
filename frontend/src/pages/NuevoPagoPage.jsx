@@ -1,6 +1,7 @@
-import {useEffect, useState} from 'react';
-import {iniciarPago, listarMediosPago} from '../services/pagosService.js';
+import {useMemo, useState} from 'react';
+import {iniciarPago} from '../services/pagosService.js';
 import {formatoMonto, PEDIDOS, USUARIOS} from '../data/demo.js';
+import {leerMedios} from '../data/mediosGuardados.js';
 import ErrorBanner from '../components/ErrorBanner.jsx';
 import PagoDetalle from '../components/PagoDetalle.jsx';
 
@@ -8,31 +9,15 @@ import PagoDetalle from '../components/PagoDetalle.jsx';
 export default function NuevoPagoPage({session}) {
     const [codigoPedido, setCodigoPedido] = useState(PEDIDOS[0].codigo);
     const [codigoUsuario, setCodigoUsuario] = useState(USUARIOS[0].codigo);
-    const [medios, setMedios] = useState([]);
     const [codigoMedioPago, setCodigoMedioPago] = useState('');
     const [monto, setMonto] = useState(String(PEDIDOS[0].total));
+    const [moneda, setMoneda] = useState('ARS');
     const [claveControl, setClaveControl] = useState(() => crypto.randomUUID());
     const [resultado, setResultado] = useState(null);
     const [error, setError] = useState(null);
 
-    // Solo ADMIN y CLIENTE pueden listar medios de pago; para otros roles se pega el codigo a mano.
-    useEffect(() => {
-        let vigente = true;
-        listarMediosPago(session.token, codigoUsuario)
-            .then((lista) => {
-                if (!vigente) return;
-                setMedios(lista);
-                setCodigoMedioPago(lista[0]?.codigo ?? '');
-            })
-            .catch(() => {
-                if (!vigente) return;
-                setMedios([]);
-                setCodigoMedioPago('');
-            });
-        return () => {
-            vigente = false;
-        };
-    }, [session.token, codigoUsuario]);
+    // Medios que se registraron desde este navegador (la API no los lista).
+    const mediosConocidos = useMemo(() => leerMedios(), []);
 
     function elegirPedido(codigo) {
         setCodigoPedido(codigo);
@@ -47,6 +32,7 @@ export default function NuevoPagoPage({session}) {
                 codigoUsuario,
                 codigoMedioPago,
                 monto: Number(monto),
+                moneda,
                 claveControl
             });
             setResultado({status: r.status, pago: r.data});
@@ -76,22 +62,22 @@ export default function NuevoPagoPage({session}) {
                             {USUARIOS.map((u) => <option key={u.codigo} value={u.codigo}>{u.nombre}</option>)}
                         </select>
                     </label>
-                    <label>Medio de pago
-                        {medios.length > 0 ? (
-                            <select value={codigoMedioPago} onChange={(e) => setCodigoMedioPago(e.target.value)}>
-                                {medios.map((m) => (
-                                    <option key={m.codigo} value={m.codigo}>
-                                        {m.tipo} · {m.detalleEnmascarado}
-                                    </option>
-                                ))}
-                            </select>
-                        ) : (
-                            <input placeholder="código de medio de pago (UUID)" value={codigoMedioPago}
-                                   onChange={(e) => setCodigoMedioPago(e.target.value)}/>
-                        )}
+                    <label>Medio de pago (código)
+                        <input list="medios-conocidos" placeholder="UUID del medio de pago" required
+                               value={codigoMedioPago} onChange={(e) => setCodigoMedioPago(e.target.value)}/>
+                        <datalist id="medios-conocidos">
+                            {mediosConocidos.map((m) => (
+                                <option key={m.codigoMedioPago} value={m.codigoMedioPago}>
+                                    {m.tipo} · {m.detalleEnmascarado} (registrado por {m.registradoPor})
+                                </option>
+                            ))}
+                        </datalist>
                     </label>
-                    <label>Monto (ARS)
+                    <label>Monto
                         <input type="number" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)}/>
+                    </label>
+                    <label>Moneda
+                        <input maxLength={3} value={moneda} onChange={(e) => setMoneda(e.target.value.toUpperCase())}/>
                     </label>
                     <label className="wide">Clave de control (idempotencia)
                         <span className="inline">
@@ -103,8 +89,10 @@ export default function NuevoPagoPage({session}) {
                     <div className="wide"><button className="primary">Enviar solicitud de pago</button></div>
                 </form>
                 <p className="muted">
-                    Reenviar con la misma clave devuelve el pago original (200). Cambiar el monto con la misma
-                    clave da DUPLICATE_PAYMENT_REQUEST; un monto distinto al del pedido, PAYMENT_AMOUNT_MISMATCH.
+                    El medio de pago lo registra un cliente (pestaña «Medios de pago», con la cuenta cliente o
+                    cliente2) y debe ser del usuario elegido. Reenviar con la misma clave devuelve el pago original
+                    (200); cambiar el monto con la misma clave da DUPLICATE_PAYMENT_REQUEST; un monto distinto al
+                    del pedido, PAYMENT_AMOUNT_MISMATCH.
                 </p>
                 <ErrorBanner error={error}/>
                 {resultado && (
@@ -115,7 +103,9 @@ export default function NuevoPagoPage({session}) {
                     </div>
                 )}
             </section>
-            {resultado && <PagoDetalle key={resultado.pago.codigo} session={session} codigo={resultado.pago.codigo}/>}
+            {resultado && (
+                <PagoDetalle key={resultado.pago.codigoPago} session={session} codigoPago={resultado.pago.codigoPago}/>
+            )}
         </>
     );
 }
