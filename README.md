@@ -14,12 +14,30 @@ mvn spring-boot:run          # o correr PagosApplication desde IntelliJ
 docker compose up -d
 mvn spring-boot:run -Dspring-boot.run.profiles=postgres
 
-# Frontend (puerto 5173, Node 24)
+# Frontend (puerto 5173, Node 20.19+ o 22.12+)
 cd frontend
-cp .env.example .env
+cp .env.example .env     # VITE_API_URL=http://localhost:8089
 npm install
 npm run dev
+npm test                 # utilidades de JWT y rutas por rol
 ```
+
+## Frontend (estructura de la clase "React público / privado")
+
+React + React Router. El JWT vive **solo en memoria** (`AuthContext`): recargar la página cierra la sesión. React
+decodifica `roles` y `exp` solo para adaptar la navegación; **el control de acceso real lo hace el backend**.
+
+| Ruta | Acceso | Qué hace |
+|---|---|---|
+| `/inicio` | pública, sin JWT | explica el módulo, estados y medios aceptados (no llama a la API) |
+| `/login` | pública | login de demo con chips de cuentas |
+| `/servicio/pagos/nuevo` | SERVICIO_ESCRITURA | iniciar pago (idempotencia), aprobar / rechazar / reembolsar el resultado |
+| `/admin/pagos` | ADMINISTRADOR, ANALISTA, SERVICIO_LECTURA | listado paginado con filtros; detalle, historial y reembolsos |
+| `/pagos/consulta` | CLIENTE, ADMINISTRADOR, SERVICIO_LECTURA | consultar un pago por código (el cliente solo ve los suyos); por pedido si el rol lista |
+| `/cliente/medios-pago` | CLIENTE | registrar medios de pago (se guarda solo el detalle enmascarado) |
+| `/no-autorizado` | pública | mensaje de acceso denegado |
+
+Sin sesión, las rutas privadas redirigen a `/login`; con sesión pero sin el rol, a `/no-autorizado`.
 
 - **Swagger UI:** http://localhost:8089/swagger-ui.html · OpenAPI JSON: http://localhost:8089/v3/api-docs
 - Consola H2: http://localhost:8089/h2-console (`jdbc:h2:mem:pagos`, usuario `sa`, sin contraseña)
