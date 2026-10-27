@@ -1,6 +1,6 @@
 # DeliveryGo · Módulo de Pagos (Grupo 3)
 
-Backend Spring Boot 3.5 (Java 25, JPA, JWT). Es un módulo **solo backend**: no tiene frontend; la interfaz visual es el Swagger UI (OpenAPI).
+Backend Spring Boot 3.5 (Java 25, JPA + H2 en memoria, JWT). Es un módulo **solo backend**: no tiene frontend; la interfaz visual es el Swagger UI (OpenAPI).
 Los pagos son **simulados**: no se procesa dinero real ni se guardan datos reales de tarjetas.
 El contrato sigue el documento de la Entrega 1 corregido (`src/main/java/ar/edu/uade/api/pagos/PDF/`).
 
@@ -9,13 +9,14 @@ El contrato sigue el documento de la Entrega 1 corregido (`src/main/java/ar/edu/
 ```bash
 # Backend (puerto 8089, H2 en memoria con datos de demo)
 mvn spring-boot:run          # o correr PagosApplication desde IntelliJ
-
-# Con PostgreSQL (BL-08): levanta la base y usa el perfil "postgres" (sin datos de demo)
-docker compose up -d
-mvn spring-boot:run -Dspring-boot.run.profiles=postgres
 ```
 
+La base es H2 en memoria (`ddl-auto=create-drop`): cada arranque empieza limpio y carga los datos de demo.
+
 - **Swagger UI (la interfaz del módulo):** http://localhost:8089/swagger-ui.html · OpenAPI JSON: http://localhost:8089/v3/api-docs
+  · YAML: http://localhost:8089/v3/api-docs.yaml
+- **Archivo del contrato** (para entregar o importar en Postman / Swagger Editor): `docs/openapi.yaml` y
+  `docs/openapi.json`. Se regeneran sin levantar el servidor con `mvn test -Dtest=ExportarOpenApiTest`.
 - Consola H2: http://localhost:8089/h2-console (`jdbc:h2:mem:pagos`, usuario `sa`, sin contraseña)
 - Tests: `mvn test` (incluye `OpenApiContractTest`, que compara el Swagger generado con el contrato del TPO)
 
@@ -90,4 +91,5 @@ Usuarios: `00000000-0000-0000-0000-000000000001` Ana, `…02` Bruno, `…03` ina
 - **Un pedido puede tener varios intentos** (RN-05); no se bloquea un segundo pago mientras haya uno PENDIENTE.
 - **Códigos técnicos extra** fuera de la tabla del TPO: `NOT_FOUND` (ruta inexistente) y `METHOD_NOT_ALLOWED`.
 - **Una sola excepción de negocio** (`PagoException` + `ErrorCode`): el TPO exige código y HTTP status propios por error.
-- El perfil `postgres` usa `ddl-auto=update` y no carga datos de demo.
+- **Base de datos:** se usa H2 en memoria. El documento menciona PostgreSQL y docker-compose (BL-08), pero el
+  equipo decidió mantener H2 y no usar Docker.

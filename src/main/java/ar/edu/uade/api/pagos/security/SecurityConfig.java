@@ -43,7 +43,7 @@ public class SecurityConfig {
                 .exceptionHandling(e -> e.authenticationEntryPoint(errorHandler).accessDeniedHandler(errorHandler))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**",
-                                "/h2-console/**").permitAll()
+                                "/v3/api-docs.yaml", "/h2-console/**").permitAll()
 
                         // API-01, API-02, API-03
                         .requestMatchers(HttpMethod.POST, PAGOS, PAGOS + "/*/approve", PAGOS + "/*/reject")

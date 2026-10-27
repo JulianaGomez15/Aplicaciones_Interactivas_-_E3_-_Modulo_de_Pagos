@@ -1,0 +1,857 @@
+openapi: 3.1.0
+info:
+  title: DeliveryGo - Modulo de Pagos
+  description: |-
+    API REST del **Modulo de Pagos** (Grupo 3, Aplicaciones Interactivas). Registra intentos de pago de pedidos, los autoriza o rechaza de forma **simulada**, gestiona reembolsos totales o parciales y guarda el historial de estados. No procesa dinero real ni guarda datos reales de tarjetas.
+
+    **Autenticacion:** JWT en `Authorization: Bearer <token>`. En el ecosistema lo emite el Servicio de Usuarios; aca `POST /auth/login` lo simula con cuentas de demo. Roles: ADMINISTRADOR, ANALISTA, CLIENTE, SERVICIO_ESCRITURA y SERVICIO_LECTURA (JWT de servicio entre APIs).
+
+    **Trazabilidad:** cada operacion indica su ID de API (API-01 a API-08) segun el documento de la Entrega 1.
+
+    **Errores:** todos usan el formato `ErrorResponse` (`timestamp`, `status`, `code`, `message`, `path`, `correlationId`). El `correlationId` se toma del header `X-Correlation-Id`.
+
+    **Datos simulados** de otros modulos: pedidos BORRADOR `00000000-0000-0000-0001-00000000000{1,2,3}` (totales 15000.00, 8500.50 y 32000.00), usuarios `00000000-0000-0000-0000-00000000000{1,2}`.
+  version: "1.0"
+servers:
+- url: /
+  description: Servidor actual
+tags:
+- name: Pagos
+  description: "Iniciar, autorizar, rechazar, consultar, listar y reembolsar pagos\
+    \ simulados"
+- name: Auth (solo demo)
+  description: "Simula al Servicio de Usuarios, que en el ecosistema es el unico emisor\
+    \ de JWT. Cuentas: admin/admin123, analista/analista123, cliente/cliente123 (Ana),\
+    \ cliente2/cliente123 (Bruno), api-pedidos/pedidos123 (escritura y lectura), api-analitica/analitica123\
+    \ (lectura)."
+- name: Medios de pago
+  description: "Medios de pago simulados: solo se guarda un detalle enmascarado"
+paths:
+  /auth/login:
+    post:
+      tags:
+      - Auth (solo demo)
+      summary: Login de demo
+      description: "Devuelve un JWT con los roles y, para CLIENTE, el codigoUsuario.\
+        \ Usarlo como `Authorization: Bearer <token>` (boton Authorize)."
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginDto"
+        required: true
+      responses:
+        "200":
+          description: JWT emitido
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/TokenDto"
+        "401":
+          description: "UNAUTHORIZED: credenciales incorrectas"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/payments:
+    get:
+      tags:
+      - Pagos
+      summary: Listar pagos (CU-06 / CU-07)
+      description: |-
+        Listado paginado y filtrable para auditoria y metricas. Con `codigoPedido` devuelve todos los intentos de pago de un pedido (CU-07): si no tiene pagos, 200 con la lista vacia.
+
+        Orden: `sort=campo,asc|desc` con campo en fechaCreacion, fechaActualizacion, monto o estado (por defecto fechaCreacion,desc). Tamano maximo de pagina: 100.
+
+        **Roles:** ADMINISTRADOR, ANALISTA, SERVICIO_LECTURA.
+      operationId: API-06_listarPagos
+      parameters:
+      - name: estado
+        in: query
+        description: "PENDIENTE, APROBADO, RECHAZADO o REEMBOLSADO"
+        required: false
+        schema:
+          type: string
+      - name: codigoUsuario
+        in: query
+        description: Codigo del usuario que pago
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: codigoPedido
+        in: query
+        description: "Codigo del pedido (CU-07: intentos de pago del pedido)"
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: desde
+        in: query
+        description: "Fecha de creacion desde (inclusive), formato yyyy-MM-dd"
+        required: false
+        schema:
+          type: string
+          format: date
+        example: 2026-09-01
+      - name: hasta
+        in: query
+        description: "Fecha de creacion hasta (inclusive), formato yyyy-MM-dd"
+        required: false
+        schema:
+          type: string
+          format: date
+        example: 2026-09-30
+      - name: page
+        in: query
+        description: Zero-based page index (0..N)
+        required: false
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+      - name: size
+        in: query
+        description: The size of the page to be returned
+        required: false
+        schema:
+          type: integer
+          default: 20
+          minimum: 1
+      - name: sort
+        in: query
+        description: "Sorting criteria in the format: property,(asc|desc). Default\
+          \ sort order is ascending. Multiple sort criteria are supported."
+        required: false
+        schema:
+          type: array
+          default:
+          - "fechaCreacion,DESC"
+          items:
+            type: string
+      responses:
+        "200":
+          description: Pagina de resultados
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PaginaPagosResponse"
+        "400":
+          description: "VALIDATION_ERROR: filtros, fechas o sort invalidos"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+    post:
+      tags:
+      - Pagos
+      summary: Iniciar pago (CU-01 / CU-09)
+      description: |-
+        Registra un intento de pago PENDIENTE para un pedido pendiente de pago (BORRADOR).
+
+        **Idempotencia (RN-01):** si la `claveControl` ya existe con los mismos datos (pedido, usuario, monto y medio de pago) responde **200** con el pago original sin crear otro; con datos distintos responde **409 DUPLICATE_PAYMENT_REQUEST**. Un pago RECHAZADO no se reintenta con la misma clave: hace falta una nueva.
+
+        **Valida contra otros modulos:** usuario activo (INT-02), medio de pago activo y propio, pedido pendiente de pago y monto igual al total (INT-01). Si Pedidos o Usuarios no responden: 503 y no se crea el pago.
+
+        **Rol:** SERVICIO_ESCRITURA (JWT de servicio de Pedidos).
+      operationId: API-01_iniciarPago
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearPagoRequest"
+        required: true
+      responses:
+        "201":
+          description: Pago creado en estado PENDIENTE
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PagoResponse"
+        "200":
+          description: "La clave de control ya se uso con los mismos datos: se devuelve\
+            \ el pago existente"
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PagoResponse"
+        "400":
+          description: "VALIDATION_ERROR (campos faltantes o con formato invalido)\
+            \ o PAYMENT_METHOD_INVALID (medio inexistente, inactivo o de otro usuario)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: "UNAUTHORIZED: falta el JWT o no es valido"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "FORBIDDEN: el rol no tiene permiso de escritura"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "DUPLICATE_PAYMENT_REQUEST: la clave de control ya se uso con\
+            \ datos distintos"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: "PAYMENT_AMOUNT_MISMATCH, PAYMENT_USER_INVALID u ORDER_NOT_PAYABLE"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: "EXTERNAL_SERVICE_UNAVAILABLE: Pedidos o Usuarios no respondieron;\
+            \ no se crea el pago"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+  /api/v1/payments/{codigoPago}/reject:
+    post:
+      tags:
+      - Pagos
+      summary: Rechazar pago (CU-03)
+      description: |-
+        Rechazo simulado: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.
+
+        **Rol:** SERVICIO_ESCRITURA.
+      operationId: API-03_rechazarPago
+      parameters:
+      - name: codigoPago
+        in: path
+        description: Codigo publico del pago
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RechazarPagoRequest"
+      responses:
+        "200":
+          description: Pago RECHAZADO (tambien si ya lo estaba)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PagoResponse"
+        "400":
+          description: VALIDATION_ERROR (motivo demasiado largo)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: PAYMENT_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "PAYMENT_INVALID_STATE: el pago esta APROBADO o REEMBOLSADO"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+  /api/v1/payments/{codigoPago}/refund:
+    post:
+      tags:
+      - Pagos
+      summary: Reembolsar pago (CU-05)
+      description: |-
+        Reembolso total o parcial, simulado, de un pago APROBADO. El monto no puede superar lo disponible (monto aprobado menos lo ya reembolsado). Un reembolso parcial deja el pago APROBADO; el que cubre el total lo pasa a REEMBOLSADO y lo registra en el historial.
+
+        **Idempotencia (RN-10):** repetir la `claveControl` del reembolso devuelve **200** con el reembolso existente.
+
+        **Roles:** SERVICIO_ESCRITURA, ADMINISTRADOR.
+      operationId: API-05_reembolsarPago
+      parameters:
+      - name: codigoPago
+        in: path
+        description: Codigo publico del pago
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReembolsoRequest"
+        required: true
+      responses:
+        "201":
+          description: Reembolso registrado
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ReembolsoResponse"
+        "200":
+          description: "La clave de control del reembolso ya se uso: se devuelve el\
+            \ reembolso existente"
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ReembolsoResponse"
+        "400":
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: PAYMENT_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "PAYMENT_INVALID_STATE: el pago no esta APROBADO (incluye REEMBOLSADO)\
+            \ / DUPLICATE_PAYMENT_REQUEST si la clave se uso con otros datos"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: "REFUND_EXCEEDS_AMOUNT: el monto supera lo disponible"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+  /api/v1/payments/{codigoPago}/approve:
+    post:
+      tags:
+      - Pagos
+      summary: Autorizar pago (CU-02)
+      description: |-
+        Autorizacion simulada: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).
+
+        Con la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 sin cambios (RN-10); si esta RECHAZADO o REEMBOLSADO, 409.
+
+        **Rol:** SERVICIO_ESCRITURA.
+      operationId: API-02_aprobarPago
+      parameters:
+      - name: codigoPago
+        in: path
+        description: Codigo publico del pago
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: Pago APROBADO (tambien si ya lo estaba)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PagoResponse"
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: PAYMENT_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "PAYMENT_INVALID_STATE: el pago esta RECHAZADO o REEMBOLSADO"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+  /api/v1/payment-methods:
+    post:
+      tags:
+      - Medios de pago
+      summary: Registrar medio de pago (CU-08)
+      description: |-
+        Registra un medio de pago simulado para el **usuario del JWT** (el cuerpo no lleva codigo de usuario). Se guardan solo los ultimos 4 digitos (RN-08); el numero completo se descarta.
+
+        Tipos: TARJETA_CREDITO, TARJETA_DEBITO (13 a 19 digitos), BILLETERA_VIRTUAL, TRANSFERENCIA.
+
+        **Rol:** CLIENTE.
+      operationId: API-07_registrarMedioPago
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedioPagoRequest"
+        required: true
+      responses:
+        "201":
+          description: Medio de pago creado y activo
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MedioPagoResponse"
+        "400":
+          description: PAYMENT_METHOD_INVALID (tipo no soportado o numero invalido)
+            o VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "FORBIDDEN: el rol no es CLIENTE"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+  /api/v1/payments/{codigoPago}:
+    get:
+      tags:
+      - Pagos
+      summary: Consultar pago (CU-04)
+      description: |-
+        Busca por el codigo publico (nunca por el id interno). Un usuario con rol CLIENTE solo puede ver sus propios pagos (se compara el `codigoUsuario` del JWT).
+
+        **Roles:** CLIENTE (solo sus pagos), ADMINISTRADOR, SERVICIO_LECTURA.
+      operationId: API-04_consultarPago
+      parameters:
+      - name: codigoPago
+        in: path
+        description: Codigo publico del pago
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: Pago
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PagoResponse"
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "FORBIDDEN: rol sin permiso, o pago de otro usuario"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: PAYMENT_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+  /api/v1/payments/{codigoPago}/history:
+    get:
+      tags:
+      - Pagos
+      summary: Historial de estados del pago (CU-10)
+      description: |-
+        Linea de tiempo completa del pago, ordenada por fecha, incluida el alta (estadoAnterior nulo).
+
+        **Rol:** ADMINISTRADOR.
+      operationId: API-08_consultarHistorial
+      parameters:
+      - name: codigoPago
+        in: path
+        description: Codigo publico del pago
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          description: Historial del pago
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistorialEstadoResponse"
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: PAYMENT_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+components:
+  schemas:
+    ErrorResponse:
+      description: Error normalizado
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Fecha y hora del error (ISO-8601)
+        status:
+          type: integer
+          format: int32
+          example: 409
+        code:
+          type: string
+          description: Codigo de error propio del modulo
+          example: PAYMENT_INVALID_STATE
+        message:
+          type: string
+          description: Mensaje descriptivo para quien consume la API
+        path:
+          type: string
+          example: /api/v1/payments/6d3a0b2e-0000-0000-0000-000000000000/approve
+        correlationId:
+          type: string
+          description: Tomado del header X-Correlation-Id (o generado si no vino)
+    LoginDto:
+      type: object
+      description: Credenciales de demo
+      properties:
+        username:
+          type: string
+          example: api-pedidos
+        password:
+          type: string
+          example: pedidos123
+    TokenDto:
+      type: object
+      properties:
+        token:
+          type: string
+        tipo:
+          type: string
+        expiresInSeconds:
+          type: integer
+          format: int64
+        username:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+    MedioPagoResumenResponse:
+      type: object
+      description: Medio de pago utilizado (solo datos enmascarados)
+      properties:
+        tipo:
+          type: string
+          example: TARJETA_CREDITO
+        detalleEnmascarado:
+          type: string
+          example: '**** **** **** 1234'
+    PagoResponse:
+      type: object
+      description: "Pago: estado actual, monto y medio de pago enmascarado"
+      properties:
+        codigoPago:
+          type: string
+          format: uuid
+          description: Codigo publico del pago (nunca se expone el id interno)
+        codigoPedido:
+          type: string
+          format: uuid
+        estado:
+          type: string
+          enum:
+          - PENDIENTE
+          - APROBADO
+          - RECHAZADO
+          - REEMBOLSADO
+          example: PENDIENTE
+        monto:
+          type: number
+          example: 15000.0
+        moneda:
+          type: string
+          example: ARS
+        medioPago:
+          $ref: "#/components/schemas/MedioPagoResumenResponse"
+        fechaCreacion:
+          type: string
+          format: date-time
+        fechaActualizacion:
+          type: string
+          format: date-time
+    CrearPagoRequest:
+      type: object
+      description: Solicitud de pago que envia el Servicio de Pedidos
+      properties:
+        codigoPedido:
+          type: string
+          format: uuid
+          description: "Codigo del pedido a pagar (debe estar pendiente de pago, estado\
+            \ BORRADOR)"
+          example: 00000000-0000-0000-0001-000000000001
+        codigoUsuario:
+          type: string
+          format: uuid
+          description: Codigo del usuario que paga (debe existir y estar activo)
+          example: 00000000-0000-0000-0000-000000000001
+        codigoMedioPago:
+          type: string
+          format: uuid
+          description: Codigo del medio de pago (debe estar activo y pertenecer al
+            usuario)
+        monto:
+          type: number
+          description: "Importe: debe coincidir exactamente con el total del pedido\
+            \ (RN-02)"
+          example: 15000.0
+          exclusiveMinimum: 0
+        moneda:
+          type: string
+          description: Moneda (codigo de 3 letras)
+          example: ARS
+          minLength: 1
+          pattern: "[A-Za-z]{3}"
+        claveControl:
+          type: string
+          description: "Clave de control (idempotencia, RN-01): la misma clave con\
+            \ los mismos datos devuelve el pago existente; con datos distintos responde\
+            \ 409"
+          example: pedido-0001-intento-1
+          maxLength: 100
+          minLength: 0
+      required:
+      - claveControl
+      - codigoMedioPago
+      - codigoPedido
+      - codigoUsuario
+      - moneda
+      - monto
+    RechazarPagoRequest:
+      type: object
+      description: Motivo del rechazo simulado
+      properties:
+        motivo:
+          type: string
+          description: Motivo del rechazo (opcional; por defecto 'Rechazo simulado')
+          example: Fondos insuficientes
+          maxLength: 255
+          minLength: 0
+    ReembolsoResponse:
+      type: object
+      description: Reembolso registrado (simulado)
+      properties:
+        codigoReembolso:
+          type: string
+          format: uuid
+        codigoPago:
+          type: string
+          format: uuid
+        monto:
+          type: number
+          example: 5000.0
+        estado:
+          type: string
+          enum:
+          - APROBADO
+          example: APROBADO
+        montoDisponible:
+          type: number
+          description: Cuanto queda disponible para reembolsar en el pago
+          example: 10000.0
+        fechaSolicitud:
+          type: string
+          format: date-time
+        fechaResolucion:
+          type: string
+          format: date-time
+    ReembolsoRequest:
+      type: object
+      description: Solicitud de reembolso total o parcial
+      properties:
+        monto:
+          type: number
+          description: Monto a devolver; no puede superar lo disponible (monto aprobado
+            menos lo ya reembolsado)
+          example: 5000.0
+          exclusiveMinimum: 0
+        motivo:
+          type: string
+          example: Pedido cancelado por el cliente
+          maxLength: 255
+          minLength: 0
+        claveControl:
+          type: string
+          description: "Clave de control del reembolso (RN-10): repetirla devuelve\
+            \ el reembolso existente"
+          example: reembolso-0001-1
+          maxLength: 100
+          minLength: 0
+      required:
+      - claveControl
+      - monto
+      - motivo
+    MedioPagoResponse:
+      type: object
+      description: Medio de pago registrado (solo datos enmascarados)
+      properties:
+        codigoMedioPago:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+          example: TARJETA_CREDITO
+        detalleEnmascarado:
+          type: string
+          example: '**** **** **** 1234'
+        activo:
+          type: boolean
+    MedioPagoRequest:
+      type: object
+      description: "Alta de medio de pago. El usuario se toma del JWT, no del cuerpo."
+      properties:
+        tipo:
+          type: string
+          enum:
+          - TARJETA_CREDITO
+          - TARJETA_DEBITO
+          - BILLETERA_VIRTUAL
+          - TRANSFERENCIA
+          example: TARJETA_CREDITO
+          minLength: 1
+        numero:
+          type: string
+          description: "Numero simulado (13 a 19 digitos para tarjetas). Solo viaja\
+            \ en esta solicitud: se guardan unicamente los ultimos 4 y el resto se\
+            \ descarta (RN-08)"
+          example: 4111 1111 1111 1234
+          maxLength: 64
+          minLength: 0
+      required:
+      - numero
+      - tipo
+    PaginaPagosResponse:
+      type: object
+      description: Pagina de pagos
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/PagoResponse"
+        page:
+          type: integer
+          format: int32
+          description: Numero de pagina (base 0)
+          example: 0
+        size:
+          type: integer
+          format: int32
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    HistorialEstadoResponse:
+      type: object
+      description: Un cambio de estado del pago
+      properties:
+        estadoAnterior:
+          type:
+          - string
+          - "null"
+          description: Null en el alta del pago
+          example: PENDIENTE
+        estadoNuevo:
+          type: string
+          example: APROBADO
+        motivo:
+          type: string
+        fecha:
+          type: string
+          format: date-time
+  securitySchemes:
+    bearerAuth:
+      type: http
+      description: JWT obtenido en POST /auth/login
+      scheme: bearer
+      bearerFormat: JWT

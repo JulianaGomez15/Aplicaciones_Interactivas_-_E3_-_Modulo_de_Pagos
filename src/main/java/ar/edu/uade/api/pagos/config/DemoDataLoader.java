@@ -10,14 +10,12 @@ import ar.edu.uade.api.pagos.services.ReembolsoService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
 
 import java.math.BigDecimal;
 import java.util.function.Supplier;
 
 // Carga datos de demo SIEMPRE a traves de los Services (nunca directo a los Repositories).
 @Configuration
-@Profile("!postgres") // la base H2 es en memoria y arranca vacia; en PostgreSQL los datos persisten entre arranques
 public class DemoDataLoader {
 
     @Bean
