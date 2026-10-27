@@ -1,6 +1,6 @@
 # DeliveryGo · Módulo de Pagos (Grupo 3)
 
-Backend Spring Boot 3.5 (Java 25, JPA, JWT, Swagger) y frontend React/Vite.
+Backend Spring Boot 3.5 (Java 25, JPA, JWT). Es un módulo **solo backend**: no tiene frontend; la interfaz visual es el Swagger UI (OpenAPI).
 Los pagos son **simulados**: no se procesa dinero real ni se guardan datos reales de tarjetas.
 El contrato sigue el documento de la Entrega 1 corregido (`src/main/java/ar/edu/uade/api/pagos/PDF/`).
 
@@ -13,35 +13,24 @@ mvn spring-boot:run          # o correr PagosApplication desde IntelliJ
 # Con PostgreSQL (BL-08): levanta la base y usa el perfil "postgres" (sin datos de demo)
 docker compose up -d
 mvn spring-boot:run -Dspring-boot.run.profiles=postgres
-
-# Frontend (puerto 5173, Node 20.19+ o 22.12+)
-cd frontend
-cp .env.example .env     # VITE_API_URL=http://localhost:8089
-npm install
-npm run dev
-npm test                 # utilidades de JWT y rutas por rol
 ```
 
-## Frontend (estructura de la clase "React público / privado")
-
-React + React Router. El JWT vive **solo en memoria** (`AuthContext`): recargar la página cierra la sesión. React
-decodifica `roles` y `exp` solo para adaptar la navegación; **el control de acceso real lo hace el backend**.
-
-| Ruta | Acceso | Qué hace |
-|---|---|---|
-| `/inicio` | pública, sin JWT | explica el módulo, estados y medios aceptados (no llama a la API) |
-| `/login` | pública | login de demo con chips de cuentas |
-| `/servicio/pagos/nuevo` | SERVICIO_ESCRITURA | iniciar pago (idempotencia), aprobar / rechazar / reembolsar el resultado |
-| `/admin/pagos` | ADMINISTRADOR, ANALISTA, SERVICIO_LECTURA | listado paginado con filtros; detalle, historial y reembolsos |
-| `/pagos/consulta` | CLIENTE, ADMINISTRADOR, SERVICIO_LECTURA | consultar un pago por código (el cliente solo ve los suyos); por pedido si el rol lista |
-| `/cliente/medios-pago` | CLIENTE | registrar medios de pago (se guarda solo el detalle enmascarado) |
-| `/no-autorizado` | pública | mensaje de acceso denegado |
-
-Sin sesión, las rutas privadas redirigen a `/login`; con sesión pero sin el rol, a `/no-autorizado`.
-
-- **Swagger UI:** http://localhost:8089/swagger-ui.html · OpenAPI JSON: http://localhost:8089/v3/api-docs
+- **Swagger UI (la interfaz del módulo):** http://localhost:8089/swagger-ui.html · OpenAPI JSON: http://localhost:8089/v3/api-docs
 - Consola H2: http://localhost:8089/h2-console (`jdbc:h2:mem:pagos`, usuario `sa`, sin contraseña)
 - Tests: `mvn test` (incluye `OpenApiContractTest`, que compara el Swagger generado con el contrato del TPO)
+
+## Probar un pago completo desde Swagger
+
+1. `POST /auth/login` con `cliente` / `cliente123` → copiar el `token` → botón **Authorize** (pegar solo el token).
+2. `POST /api/v1/payment-methods` con `{"tipo":"TARJETA_CREDITO","numero":"4111111111111111"}` → copiar `codigoMedioPago`.
+3. Login como `api-pedidos` / `pedidos123` → **Authorize** con ese token.
+4. `POST /api/v1/payments` con el pedido `00000000-0000-0000-0001-000000000003`, usuario
+   `00000000-0000-0000-0000-000000000001`, ese `codigoMedioPago`, `monto` 32000.00, `moneda` ARS y una `claveControl`.
+   Repetir el mismo pedido devuelve 200 (idempotencia); con otro monto, 409.
+5. `POST /api/v1/payments/{codigoPago}/approve` → luego `/refund` (parcial o total).
+6. Con `admin` / `admin123`: `GET /api/v1/payments/{codigoPago}/history`; con `analista`: `GET /api/v1/payments`.
+
+Al arrancar, la consola imprime los códigos de los medios de pago de demo.
 
 ## Autenticación y roles
 
@@ -92,8 +81,8 @@ Usuarios: `00000000-0000-0000-0000-000000000001` Ana, `…02` Bruno, `…03` ina
 
 ## Decisiones donde el documento era ambiguo o incompleto
 
-- **Medios de pago:** la API solo tiene el alta (API-07), sin listado. El front recuerda en `localStorage` los
-  que se registraron en ese navegador (solo datos enmascarados) para poder usarlos en «Iniciar pago».
+- **Medios de pago:** la API solo tiene el alta (API-07), sin listado. El código del medio se obtiene de la
+  respuesta del alta (o de la consola al arrancar, para los medios de demo) y se usa en «Iniciar pago».
 - **CU-05, reembolsos:** la clave de control repetida con otro monto o sobre otro pago responde 409
   `DUPLICATE_PAYMENT_REQUEST`; con los mismos datos, 200 con el reembolso existente.
 - **Concurrencia:** dos `POST /payments` simultáneos con la misma clave → un solo pago, ambos reciben el mismo

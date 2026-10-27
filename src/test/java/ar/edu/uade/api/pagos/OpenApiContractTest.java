@@ -170,6 +170,21 @@ class OpenApiContractTest {
         }
     }
 
+    // Swagger UI es la unica interfaz visual del modulo: tiene que abrir sin JWT.
+    @Test
+    void swaggerUiEsPublicoYCarga() throws Exception {
+        mvc.perform(get("/swagger-ui.html"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().is3xxRedirection());
+        mvc.perform(get("/swagger-ui/index.html"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        String config = mvc.perform(get("/v3/api-docs/swagger-config"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertTrue(config.contains("/v3/api-docs"), "swagger-config debe apuntar a /v3/api-docs: " + config);
+        // El login de demo tambien queda documentado y es publico, para poder obtener el token desde Swagger.
+        assertTrue(existe("$.paths['/auth/login'].post"));
+    }
+
     @Test
     void tagsEInformacionGeneral() throws Exception {
         assertEquals("DeliveryGo - Modulo de Pagos", leer("$.info.title"));

@@ -71,6 +71,10 @@ public class DemoDataLoader {
                     tarjetaAna.getCodigoMedioPago(), new BigDecimal("15000.00"), "ARS", "demo-clave-001"))
                     .getCuerpo().getCodigoPago());
 
+            System.out.println("\nMedios de pago de demo (para usar en POST /api/v1/payments):");
+            System.out.println("  Ana   (00000000-0000-0000-0000-000000000001): " + tarjetaAna.getCodigoMedioPago());
+            System.out.println("  Bruno (00000000-0000-0000-0000-000000000002): " + billeteraBruno.getCodigoMedioPago());
+
             System.out.println("\nSwagger UI: http://localhost:8089/swagger-ui.html");
             System.out.println("H2 console: http://localhost:8089/h2-console (jdbc:h2:mem:pagos, user sa)");
         };
