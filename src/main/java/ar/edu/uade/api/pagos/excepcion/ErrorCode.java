@@ -4,6 +4,8 @@ import org.springframework.http.HttpStatus;
 
 // Codigos de error del modulo (seccion "Manejo de errores" del TPO) + dos tecnicos (rutas inexistentes / metodo).
 public enum ErrorCode {
+
+    // Separar esto en clases distintas porq no tiene sentido q este toudo junto
     PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND),
     PAYMENT_AMOUNT_MISMATCH(HttpStatus.UNPROCESSABLE_ENTITY),
     PAYMENT_INVALID_STATE(HttpStatus.CONFLICT),

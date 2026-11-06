@@ -5,6 +5,7 @@ import java.util.UUID;
 
 // Identidad que Pagos reconstruye localmente a partir del JWT (no consulta a Usuarios en cada request).
 public class JwtPrincipal {
+    // este es el dto (disclamer: ponerle JwtPrincipalDTO)
 
     // Codigo que no coincide con ningun usuario: se usa si un token CLIENTE no trae codigoUsuario.
     private static final UUID NINGUNO = new UUID(0L, 0L);

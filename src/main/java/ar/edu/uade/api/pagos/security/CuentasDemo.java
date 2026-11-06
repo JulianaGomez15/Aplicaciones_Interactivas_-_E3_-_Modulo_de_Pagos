@@ -6,6 +6,8 @@ import java.util.UUID;
 
 // Cuentas de demo que simulan al Servicio de Usuarios y Autenticacion (unico emisor real del JWT).
 public final class CuentasDemo {
+    // calculo un numeor al azar y depende el caso toca la ruleta algun CU. esto va en service
+    // soo necesitamos un user que es el que va a entrar
 
     public static final String ADMINISTRADOR = "ADMINISTRADOR";
     public static final String ANALISTA = "ANALISTA";

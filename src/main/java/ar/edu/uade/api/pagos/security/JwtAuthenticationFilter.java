@@ -16,6 +16,8 @@ import java.io.IOException;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    // recumo el consumo y una respuesta de un endpoint y checkea si el token que recibe dentro del header esta autorizado y es valido y no esta vencido
+
     private final JwtService jwtService;
 
     public JwtAuthenticationFilter(JwtService jwtService) {

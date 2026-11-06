@@ -14,6 +14,7 @@ import java.util.UUID;
 
 @Service
 public class JwtService {
+    // recibe un jwt y devuelve un dto o  viceversa
 
     private final SecretKey clave;
     private final long expirationMillis;
