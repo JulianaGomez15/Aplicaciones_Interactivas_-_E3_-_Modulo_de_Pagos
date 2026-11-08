@@ -28,8 +28,11 @@ La base es H2 en memoria (`ddl-auto=create-drop`): cada arranque empieza limpio 
 4. `POST /api/v1/payments` con el pedido `00000000-0000-0000-0001-000000000003`, usuario
    `00000000-0000-0000-0000-000000000001`, ese `codigoMedioPago`, `monto` 32000.00, `moneda` ARS y una `claveControl`.
    Repetir el mismo pedido devuelve 200 (idempotencia); con otro monto, 409.
-5. `POST /api/v1/payments/{codigoPago}/approve` → luego `/refund` (parcial o total).
+5. `PATCH /api/v1/payments/{codigoPago}/approve` → luego `/refund` (parcial o total).
 6. Con `admin` / `admin123`: `GET /api/v1/payments/{codigoPago}/history`; con `analista`: `GET /api/v1/payments`.
+
+Para desactivar un medio de pago propio: `DELETE /api/v1/payment-methods/{codigoMedioPago}` con el token de cliente.
+Devuelve **204 No Content** sin cuerpo; el medio deja de servir para pagos nuevos y los pagos previos se conservan.
 
 Al arrancar, la consola imprime los códigos de los medios de pago de demo.
 
@@ -47,17 +50,18 @@ lo simula (Swagger → *Authorize* con el token).
 | `cliente` / `cliente123`        | CLIENTE (usuario Ana)                  |
 | `cliente2` / `cliente123`       | CLIENTE (usuario Bruno)                |
 
-## API (tabla "APIs" del TPO)
+## API (tabla "APIs" del TPO y baja de medio de pago)
 
 | ID | Endpoint | CU | Roles | HTTP |
 |---|---|---|---|---|
 | API-01 | `POST /api/v1/payments` | CU-01, CU-09 | SERVICIO_ESCRITURA | 201, 200, 400, 401, 403, 409, 422, 503 |
-| API-02 | `POST /api/v1/payments/{codigoPago}/approve` | CU-02 | SERVICIO_ESCRITURA | 200, 401, 403, 404, 409 |
-| API-03 | `POST /api/v1/payments/{codigoPago}/reject` | CU-03 | SERVICIO_ESCRITURA | 200, 400, 401, 403, 404, 409 |
+| API-02 | `PATCH /api/v1/payments/{codigoPago}/approve` | CU-02 | SERVICIO_ESCRITURA | 200, 401, 403, 404, 409 |
+| API-03 | `PATCH /api/v1/payments/{codigoPago}/reject` | CU-03 | SERVICIO_ESCRITURA | 200, 400, 401, 403, 404, 409 |
 | API-04 | `GET /api/v1/payments/{codigoPago}` | CU-04 | CLIENTE (solo sus pagos), ADMINISTRADOR, SERVICIO_LECTURA | 200, 401, 403, 404 |
 | API-05 | `POST /api/v1/payments/{codigoPago}/refund` | CU-05 | SERVICIO_ESCRITURA, ADMINISTRADOR | 201, 200, 400, 401, 403, 404, 409, 422 |
 | API-06 | `GET /api/v1/payments` (filtros `estado`, `codigoUsuario`, `codigoPedido`, `desde`, `hasta`; `page`, `size`, `sort`) | CU-06, CU-07 | ADMINISTRADOR, ANALISTA, SERVICIO_LECTURA | 200, 400, 401, 403 |
 | API-07 | `POST /api/v1/payment-methods` | CU-08 | CLIENTE | 201, 400, 401, 403 |
+| API-09 | `DELETE /api/v1/payment-methods/{codigoMedioPago}` | Baja de medio de pago | CLIENTE | 204, 401, 403, 404 |
 | API-08 | `GET /api/v1/payments/{codigoPago}/history` | CU-10 | ADMINISTRADOR | 200, 401, 403, 404 |
 
 Errores: `{timestamp, status, code, message, path, correlationId}` (el `correlationId` sale del header
@@ -82,7 +86,7 @@ Usuarios: `00000000-0000-0000-0000-000000000001` Ana, `…02` Bruno, `…03` ina
 
 ## Decisiones donde el documento era ambiguo o incompleto
 
-- **Medios de pago:** la API solo tiene el alta (API-07), sin listado. El código del medio se obtiene de la
+- **Medios de pago:** la API tiene alta (API-07) y baja lógica (API-09), sin listado. El código del medio se obtiene de la
   respuesta del alta (o de la consola al arrancar, para los medios de demo) y se usa en «Iniciar pago».
 - **CU-05, reembolsos:** la clave de control repetida con otro monto o sobre otro pago responde 409
   `DUPLICATE_PAYMENT_REQUEST`; con los mismos datos, 200 con el reembolso existente.

@@ -28,6 +28,8 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -93,6 +95,24 @@ class PagosApiTest {
     // ------------------------------------------------------------------ casos
 
     @Test
+    void eliminarMedioPagoDevuelve204YLoDesactiva() throws Exception {
+        String ana = clienteAna();
+        String medio = registrarMedio(ana, "4111111111111111");
+        String ruta = "/api/v1/payment-methods/" + medio;
+
+        send(delete(ruta), clienteBruno(), null).andExpect(status().isForbidden());
+        send(delete(ruta), ana, null).andExpect(status().isNoContent())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(""));
+        send(delete(ruta), ana, null).andExpect(status().isNoContent());
+        send(delete("/api/v1/payment-methods/" + UUID.randomUUID()), ana, null)
+                .andExpect(status().isNotFound());
+        send(post(PAGOS), pedidos(), crearPagoJson(PedidosClientSimulado.PEDIDO_3, ANA,
+                medio, "32000.00", "medio-eliminado"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("PAYMENT_METHOD_INVALID")));
+    }
+
+    @Test
     void cicloCompletoIdempotenciaYReembolsos() throws Exception {
         String pedidos = pedidos();
         UUID pedido = PedidosClientSimulado.PEDIDO_3; // 32000.00
@@ -122,13 +142,13 @@ class PagosApiTest {
                 .andExpect(jsonPath("$.code", is("PAYMENT_AMOUNT_MISMATCH")));
 
         // CU-02: aprobar (repetir no cambia nada, RN-10)
-        send(post(PAGOS + "/" + codigo + "/approve"), pedidos, null)
+        send(patch(PAGOS + "/" + codigo + "/approve"), pedidos, null)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.estado", is("APROBADO")));
-        send(post(PAGOS + "/" + codigo + "/approve"), pedidos, null)
+        send(patch(PAGOS + "/" + codigo + "/approve"), pedidos, null)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.estado", is("APROBADO")));
 
         // RN-04: APROBADO -> RECHAZADO no es valido
-        send(post(PAGOS + "/" + codigo + "/reject"), pedidos, null)
+        send(patch(PAGOS + "/" + codigo + "/reject"), pedidos, null)
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code", is("PAYMENT_INVALID_STATE")));
 
         // CU-05: reembolso parcial deja el pago APROBADO
@@ -272,8 +292,8 @@ class PagosApiTest {
         send(post(PAGOS), ana, json).andExpect(status().isForbidden()).andExpect(jsonPath("$.code", is("FORBIDDEN")));
         send(post(PAGOS), admin(), json).andExpect(status().isForbidden());
         send(post(PAGOS), analitica(), json).andExpect(status().isForbidden());
-        send(post(PAGOS + "/" + codigo + "/approve"), admin(), null).andExpect(status().isForbidden());
-        send(post(PAGOS + "/" + codigo + "/reject"), analitica(), null).andExpect(status().isForbidden());
+        send(patch(PAGOS + "/" + codigo + "/approve"), admin(), null).andExpect(status().isForbidden());
+        send(patch(PAGOS + "/" + codigo + "/reject"), analitica(), null).andExpect(status().isForbidden());
         send(post(PAGOS + "/" + codigo + "/refund"), analista(), reembolsoJson("1.00", "x")).andExpect(status().isForbidden());
 
         // Listado: ADMINISTRADOR, ANALISTA y servicio de lectura; no CLIENTE

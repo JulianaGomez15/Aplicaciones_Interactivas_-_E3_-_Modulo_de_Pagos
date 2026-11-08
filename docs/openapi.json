@@ -2,7 +2,7 @@
   "openapi" : "3.1.0",
   "info" : {
     "title" : "DeliveryGo - Modulo de Pagos",
-    "description" : "API REST del **Modulo de Pagos** (Grupo 3, Aplicaciones Interactivas). Registra intentos de pago de pedidos, los autoriza o rechaza de forma **simulada**, gestiona reembolsos totales o parciales y guarda el historial de estados. No procesa dinero real ni guarda datos reales de tarjetas.\n\n**Autenticacion:** JWT en `Authorization: Bearer <token>`. En el ecosistema lo emite el Servicio de Usuarios; aca `POST /auth/login` lo simula con cuentas de demo. Roles: ADMINISTRADOR, ANALISTA, CLIENTE, SERVICIO_ESCRITURA y SERVICIO_LECTURA (JWT de servicio entre APIs).\n\n**Trazabilidad:** cada operacion indica su ID de API (API-01 a API-08) segun el documento de la Entrega 1.\n\n**Errores:** todos usan el formato `ErrorResponse` (`timestamp`, `status`, `code`, `message`, `path`, `correlationId`). El `correlationId` se toma del header `X-Correlation-Id`.\n\n**Datos simulados** de otros modulos: pedidos BORRADOR `00000000-0000-0000-0001-00000000000{1,2,3}` (totales 15000.00, 8500.50 y 32000.00), usuarios `00000000-0000-0000-0000-00000000000{1,2}`.",
+    "description" : "API REST del **Modulo de Pagos** (Grupo 3, Aplicaciones Interactivas). Registra intentos de pago de pedidos, los autoriza o rechaza de forma **simulada**, gestiona reembolsos totales o parciales y guarda el historial de estados. No procesa dinero real ni guarda datos reales de tarjetas.\n\n**Autenticacion:** JWT en `Authorization: Bearer <token>`. En el ecosistema lo emite el Servicio de Usuarios; aca `POST /auth/login` lo simula con cuentas de demo. Roles: ADMINISTRADOR, ANALISTA, CLIENTE, SERVICIO_ESCRITURA y SERVICIO_LECTURA (JWT de servicio entre APIs).\n\n**Trazabilidad:** las operaciones API-01 a API-08 siguen el documento de la Entrega 1; API-09 agrega la baja de medios de pago.\n\n**Errores:** todos usan el formato `ErrorResponse` (`timestamp`, `status`, `code`, `message`, `path`, `correlationId`). El `correlationId` se toma del header `X-Correlation-Id`.\n\n**Datos simulados** de otros modulos: pedidos BORRADOR `00000000-0000-0000-0001-00000000000{1,2,3}` (totales 15000.00, 8500.50 y 32000.00), usuarios `00000000-0000-0000-0000-00000000000{1,2}`.",
     "version" : "1.0"
   },
   "servers" : [ {
@@ -294,7 +294,7 @@
       }
     },
     "/api/v1/payments/{codigoPago}/reject" : {
-      "post" : {
+      "patch" : {
         "tags" : [ "Pagos" ],
         "summary" : "Rechazar pago (CU-03)",
         "description" : "Rechazo simulado: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.\n\n**Rol:** SERVICIO_ESCRITURA.",
@@ -499,7 +499,7 @@
       }
     },
     "/api/v1/payments/{codigoPago}/approve" : {
-      "post" : {
+      "patch" : {
         "tags" : [ "Pagos" ],
         "summary" : "Autorizar pago (CU-02)",
         "description" : "Autorizacion simulada: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).\n\nCon la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 sin cambios (RN-10); si esta RECHAZADO o REEMBOLSADO, 409.\n\n**Rol:** SERVICIO_ESCRITURA.",
@@ -620,6 +620,62 @@
           },
           "403" : {
             "description" : "FORBIDDEN: el rol no es CLIENTE",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/payment-methods/{codigoMedioPago}" : {
+      "delete" : {
+        "tags" : [ "Medios de pago" ],
+        "summary" : "Eliminar medio de pago",
+        "description" : "Desactiva un medio de pago del usuario del JWT sin borrar los pagos historicos. Repetir la solicitud devuelve 204. **Rol:** CLIENTE.",
+        "operationId" : "API-09_eliminarMedioPago",
+        "parameters" : [ {
+          "name" : "codigoMedioPago",
+          "in" : "path",
+          "description" : "Codigo publico del medio de pago",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Medio de pago desactivado; sin cuerpo"
+          },
+          "401" : {
+            "description" : "UNAUTHORIZED",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "FORBIDDEN: el medio pertenece a otro usuario",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "NOT_FOUND: no existe el medio de pago",
             "content" : {
               "application/json" : {
                 "schema" : {

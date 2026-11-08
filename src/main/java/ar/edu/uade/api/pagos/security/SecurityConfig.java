@@ -45,8 +45,11 @@ public class SecurityConfig {
                         .requestMatchers("/auth/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**",
                                 "/v3/api-docs.yaml", "/h2-console/**").permitAll()
 
-                        // API-01, API-02, API-03
-                        .requestMatchers(HttpMethod.POST, PAGOS, PAGOS + "/*/approve", PAGOS + "/*/reject")
+                        // API-01
+                        .requestMatchers(HttpMethod.POST, PAGOS)
+                        .hasRole(SERVICIO_ESCRITURA)
+                        // API-02, API-03
+                        .requestMatchers(HttpMethod.PATCH, PAGOS + "/*/approve", PAGOS + "/*/reject")
                         .hasRole(SERVICIO_ESCRITURA)
                         // API-05
                         .requestMatchers(HttpMethod.POST, PAGOS + "/*/refund")
@@ -61,6 +64,8 @@ public class SecurityConfig {
                         .hasAnyRole(CLIENTE, ADMINISTRADOR, SERVICIO_LECTURA)
                         // API-07
                         .requestMatchers(HttpMethod.POST, "/api/v1/payment-methods").hasRole(CLIENTE)
+                        // API-09
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/payment-methods/*").hasRole(CLIENTE)
 
                         .anyRequest().denyAll())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

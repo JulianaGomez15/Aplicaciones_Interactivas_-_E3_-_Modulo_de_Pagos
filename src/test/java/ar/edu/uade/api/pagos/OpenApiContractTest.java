@@ -63,9 +63,9 @@ class OpenApiContractTest {
         assertEquals(Set.of("200", "201", "400", "401", "403", "409", "422", "503"),
                 codigos("/api/v1/payments", "post"));                                       // API-01
         assertEquals(Set.of("200", "401", "403", "404", "409"),
-                codigos("/api/v1/payments/{codigoPago}/approve", "post"));                  // API-02
+                codigos("/api/v1/payments/{codigoPago}/approve", "patch"));                 // API-02
         assertEquals(Set.of("200", "400", "401", "403", "404", "409"),
-                codigos("/api/v1/payments/{codigoPago}/reject", "post"));                   // API-03
+                codigos("/api/v1/payments/{codigoPago}/reject", "patch"));                  // API-03
         assertEquals(Set.of("200", "401", "403", "404"),
                 codigos("/api/v1/payments/{codigoPago}", "get"));                           // API-04
         assertEquals(Set.of("200", "201", "400", "401", "403", "404", "409", "422"),
@@ -74,6 +74,8 @@ class OpenApiContractTest {
                 codigos("/api/v1/payments", "get"));                                        // API-06
         assertEquals(Set.of("201", "400", "401", "403"),
                 codigos("/api/v1/payment-methods", "post"));                                // API-07
+        assertEquals(Set.of("204", "401", "403", "404"),
+                codigos("/api/v1/payment-methods/{codigoMedioPago}", "delete"));            // API-09
         assertEquals(Set.of("200", "401", "403", "404"),
                 codigos("/api/v1/payments/{codigoPago}/history", "get"));                   // API-08
     }
@@ -84,16 +86,23 @@ class OpenApiContractTest {
         assertEquals(Set.of("/api/v1/payments", "/api/v1/payments/{codigoPago}",
                         "/api/v1/payments/{codigoPago}/approve", "/api/v1/payments/{codigoPago}/reject",
                         "/api/v1/payments/{codigoPago}/refund", "/api/v1/payments/{codigoPago}/history",
-                        "/api/v1/payment-methods", "/auth/login"),
+                        "/api/v1/payment-methods", "/api/v1/payment-methods/{codigoMedioPago}", "/auth/login"),
                 paths.keySet());
+    }
+
+    @Test
+    void eliminarMedioPagoDocumenta204SinCuerpo() throws Exception {
+        String ruta = "$.paths['/api/v1/payment-methods/{codigoMedioPago}'].delete";
+        assertEquals("API-09_eliminarMedioPago", leer(ruta + ".operationId"));
+        assertFalse(existe(ruta + ".responses['204'].content"));
     }
 
     @Test
     void operacionesTienenIdResumenYSeguridad() throws Exception {
         Map<String, String> ids = Map.of(
                 "$.paths['/api/v1/payments'].post", "API-01_iniciarPago",
-                "$.paths['/api/v1/payments/{codigoPago}/approve'].post", "API-02_aprobarPago",
-                "$.paths['/api/v1/payments/{codigoPago}/reject'].post", "API-03_rechazarPago",
+                "$.paths['/api/v1/payments/{codigoPago}/approve'].patch", "API-02_aprobarPago",
+                "$.paths['/api/v1/payments/{codigoPago}/reject'].patch", "API-03_rechazarPago",
                 "$.paths['/api/v1/payments/{codigoPago}'].get", "API-04_consultarPago",
                 "$.paths['/api/v1/payments/{codigoPago}/refund'].post", "API-05_reembolsarPago",
                 "$.paths['/api/v1/payments'].get", "API-06_listarPagos",
@@ -115,7 +124,7 @@ class OpenApiContractTest {
     @Test
     void erroresUsanElEsquemaNormalizado() throws Exception {
         assertEquals("#/components/schemas/ErrorResponse",
-                leer("$.paths['/api/v1/payments/{codigoPago}/approve'].post.responses['409'].content"
+                leer("$.paths['/api/v1/payments/{codigoPago}/approve'].patch.responses['409'].content"
                         + "['application/json'].schema['$ref']"));
         assertEquals("#/components/schemas/ErrorResponse",
                 leer("$.paths['/api/v1/payments'].post.responses['503'].content['application/json'].schema['$ref']"));

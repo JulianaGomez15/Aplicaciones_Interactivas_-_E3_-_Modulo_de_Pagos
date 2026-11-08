@@ -36,6 +36,20 @@ public class MedioPagoService {
                 medioPago.getDetalleEnmascarado(), medioPago.getActivo());
     }
 
+    @Transactional
+    public void eliminarMedioPago(UUID codigoMedioPago, UUID codigoUsuario) {
+        MedioPago medioPago = medioPagoRepository.findByCodigoMedioPago(codigoMedioPago);
+        if (Objects.isNull(medioPago)) {
+            throw new PagoException(ErrorCode.NOT_FOUND, "No existe el medio de pago " + codigoMedioPago);
+        }
+        if (Objects.isNull(codigoUsuario) || !medioPago.getCodigoUsuario().equals(codigoUsuario)) {
+            throw new PagoException(ErrorCode.FORBIDDEN, "El medio de pago pertenece a otro usuario");
+        }
+        if (medioPago.getActivo()) {
+            medioPago.desactivar();
+        }
+    }
+
     private MedioPago validar(UUID codigoUsuario, MedioPagoRequest dto) {
 
         if (Objects.isNull(dto) || Objects.isNull(dto.getTipo()) || dto.getTipo().isBlank()) {

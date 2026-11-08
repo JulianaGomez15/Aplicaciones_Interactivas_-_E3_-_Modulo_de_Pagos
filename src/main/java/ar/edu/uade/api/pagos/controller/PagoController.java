@@ -42,13 +42,13 @@ public class PagoController implements IPagoController {
     }
 
     @Override
-    @PostMapping("/{codigoPago}/approve")
+    @PatchMapping("/{codigoPago}/approve")
     public ResponseEntity<PagoResponse> aprobar(@PathVariable UUID codigoPago) {
         return ResponseEntity.ok(pagoService.aprobarPago(codigoPago));
     }
 
     @Override
-    @PostMapping("/{codigoPago}/reject")
+    @PatchMapping("/{codigoPago}/reject")
     public ResponseEntity<PagoResponse> rechazar(@PathVariable UUID codigoPago,
                                                  @Valid @RequestBody(required = false) RechazarPagoRequest dto) {
         return ResponseEntity.ok(pagoService.rechazarPago(codigoPago, dto));
