@@ -294,7 +294,7 @@
       }
     },
     "/api/v1/payments/{codigoPago}/reject" : {
-      "post" : {
+      "patch" : {
         "tags" : [ "Pagos" ],
         "summary" : "Rechazar pago (CU-03)",
         "description" : "Rechazo simulado: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.\n\n**Rol:** SERVICIO_ESCRITURA.",
@@ -499,7 +499,7 @@
       }
     },
     "/api/v1/payments/{codigoPago}/approve" : {
-      "post" : {
+      "patch" : {
         "tags" : [ "Pagos" ],
         "summary" : "Autorizar pago (CU-02)",
         "description" : "Autorizacion simulada: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).\n\nCon la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 sin cambios (RN-10); si esta RECHAZADO o REEMBOLSADO, 409.\n\n**Rol:** SERVICIO_ESCRITURA.",

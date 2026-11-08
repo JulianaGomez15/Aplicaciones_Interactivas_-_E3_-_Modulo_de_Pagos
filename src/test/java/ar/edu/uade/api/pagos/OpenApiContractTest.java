@@ -63,9 +63,9 @@ class OpenApiContractTest {
         assertEquals(Set.of("200", "201", "400", "401", "403", "409", "422", "503"),
                 codigos("/api/v1/payments", "post"));                                       // API-01
         assertEquals(Set.of("200", "401", "403", "404", "409"),
-                codigos("/api/v1/payments/{codigoPago}/approve", "post"));                  // API-02
+                codigos("/api/v1/payments/{codigoPago}/approve", "patch"));                 // API-02
         assertEquals(Set.of("200", "400", "401", "403", "404", "409"),
-                codigos("/api/v1/payments/{codigoPago}/reject", "post"));                   // API-03
+                codigos("/api/v1/payments/{codigoPago}/reject", "patch"));                  // API-03
         assertEquals(Set.of("200", "401", "403", "404"),
                 codigos("/api/v1/payments/{codigoPago}", "get"));                           // API-04
         assertEquals(Set.of("200", "201", "400", "401", "403", "404", "409", "422"),
@@ -92,8 +92,8 @@ class OpenApiContractTest {
     void operacionesTienenIdResumenYSeguridad() throws Exception {
         Map<String, String> ids = Map.of(
                 "$.paths['/api/v1/payments'].post", "API-01_iniciarPago",
-                "$.paths['/api/v1/payments/{codigoPago}/approve'].post", "API-02_aprobarPago",
-                "$.paths['/api/v1/payments/{codigoPago}/reject'].post", "API-03_rechazarPago",
+                "$.paths['/api/v1/payments/{codigoPago}/approve'].patch", "API-02_aprobarPago",
+                "$.paths['/api/v1/payments/{codigoPago}/reject'].patch", "API-03_rechazarPago",
                 "$.paths['/api/v1/payments/{codigoPago}'].get", "API-04_consultarPago",
                 "$.paths['/api/v1/payments/{codigoPago}/refund'].post", "API-05_reembolsarPago",
                 "$.paths['/api/v1/payments'].get", "API-06_listarPagos",
@@ -115,7 +115,7 @@ class OpenApiContractTest {
     @Test
     void erroresUsanElEsquemaNormalizado() throws Exception {
         assertEquals("#/components/schemas/ErrorResponse",
-                leer("$.paths['/api/v1/payments/{codigoPago}/approve'].post.responses['409'].content"
+                leer("$.paths['/api/v1/payments/{codigoPago}/approve'].patch.responses['409'].content"
                         + "['application/json'].schema['$ref']"));
         assertEquals("#/components/schemas/ErrorResponse",
                 leer("$.paths['/api/v1/payments'].post.responses['503'].content['application/json'].schema['$ref']"));

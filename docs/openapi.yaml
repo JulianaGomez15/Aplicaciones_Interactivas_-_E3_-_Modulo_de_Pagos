@@ -232,7 +232,7 @@ paths:
       security:
       - bearerAuth: []
   /api/v1/payments/{codigoPago}/reject:
-    post:
+    patch:
       tags:
       - Pagos
       summary: Rechazar pago (CU-03)
@@ -373,7 +373,7 @@ paths:
       security:
       - bearerAuth: []
   /api/v1/payments/{codigoPago}/approve:
-    post:
+    patch:
       tags:
       - Pagos
       summary: Autorizar pago (CU-02)

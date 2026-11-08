@@ -28,7 +28,7 @@ La base es H2 en memoria (`ddl-auto=create-drop`): cada arranque empieza limpio 
 4. `POST /api/v1/payments` con el pedido `00000000-0000-0000-0001-000000000003`, usuario
    `00000000-0000-0000-0000-000000000001`, ese `codigoMedioPago`, `monto` 32000.00, `moneda` ARS y una `claveControl`.
    Repetir el mismo pedido devuelve 200 (idempotencia); con otro monto, 409.
-5. `POST /api/v1/payments/{codigoPago}/approve` → luego `/refund` (parcial o total).
+5. `PATCH /api/v1/payments/{codigoPago}/approve` → luego `/refund` (parcial o total).
 6. Con `admin` / `admin123`: `GET /api/v1/payments/{codigoPago}/history`; con `analista`: `GET /api/v1/payments`.
 
 Al arrancar, la consola imprime los códigos de los medios de pago de demo.
@@ -52,8 +52,8 @@ lo simula (Swagger → *Authorize* con el token).
 | ID | Endpoint | CU | Roles | HTTP |
 |---|---|---|---|---|
 | API-01 | `POST /api/v1/payments` | CU-01, CU-09 | SERVICIO_ESCRITURA | 201, 200, 400, 401, 403, 409, 422, 503 |
-| API-02 | `POST /api/v1/payments/{codigoPago}/approve` | CU-02 | SERVICIO_ESCRITURA | 200, 401, 403, 404, 409 |
-| API-03 | `POST /api/v1/payments/{codigoPago}/reject` | CU-03 | SERVICIO_ESCRITURA | 200, 400, 401, 403, 404, 409 |
+| API-02 | `PATCH /api/v1/payments/{codigoPago}/approve` | CU-02 | SERVICIO_ESCRITURA | 200, 401, 403, 404, 409 |
+| API-03 | `PATCH /api/v1/payments/{codigoPago}/reject` | CU-03 | SERVICIO_ESCRITURA | 200, 400, 401, 403, 404, 409 |
 | API-04 | `GET /api/v1/payments/{codigoPago}` | CU-04 | CLIENTE (solo sus pagos), ADMINISTRADOR, SERVICIO_LECTURA | 200, 401, 403, 404 |
 | API-05 | `POST /api/v1/payments/{codigoPago}/refund` | CU-05 | SERVICIO_ESCRITURA, ADMINISTRADOR | 201, 200, 400, 401, 403, 404, 409, 422 |
 | API-06 | `GET /api/v1/payments` (filtros `estado`, `codigoUsuario`, `codigoPedido`, `desde`, `hasta`; `page`, `size`, `sort`) | CU-06, CU-07 | ADMINISTRADOR, ANALISTA, SERVICIO_LECTURA | 200, 400, 401, 403 |
