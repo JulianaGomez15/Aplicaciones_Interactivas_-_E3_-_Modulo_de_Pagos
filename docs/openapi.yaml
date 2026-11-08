@@ -6,7 +6,7 @@ info:
 
     **Autenticacion:** JWT en `Authorization: Bearer <token>`. En el ecosistema lo emite el Servicio de Usuarios; aca `POST /auth/login` lo simula con cuentas de demo. Roles: ADMINISTRADOR, ANALISTA, CLIENTE, SERVICIO_ESCRITURA y SERVICIO_LECTURA (JWT de servicio entre APIs).
 
-    **Trazabilidad:** cada operacion indica su ID de API (API-01 a API-08) segun el documento de la Entrega 1.
+    **Trazabilidad:** las operaciones API-01 a API-08 siguen el documento de la Entrega 1; API-09 agrega la baja de medios de pago.
 
     **Errores:** todos usan el formato `ErrorResponse` (`timestamp`, `status`, `code`, `message`, `path`, `correlationId`). El `correlationId` se toma del header `X-Correlation-Id`.
 
@@ -465,6 +465,44 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: "FORBIDDEN: el rol no es CLIENTE"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+  /api/v1/payment-methods/{codigoMedioPago}:
+    delete:
+      tags:
+      - Medios de pago
+      summary: Eliminar medio de pago
+      description: Desactiva un medio de pago del usuario del JWT sin borrar los pagos historicos. Repetir la solicitud devuelve 204. **Rol:** CLIENTE.
+      operationId: API-09_eliminarMedioPago
+      parameters:
+      - name: codigoMedioPago
+        in: path
+        description: Codigo publico del medio de pago
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: Medio de pago desactivado; sin cuerpo
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "FORBIDDEN: el medio pertenece a otro usuario"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "NOT_FOUND: no existe el medio de pago"
           content:
             application/json:
               schema:

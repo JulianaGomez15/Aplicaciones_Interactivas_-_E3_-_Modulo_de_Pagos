@@ -36,8 +36,8 @@ public class OpenApiConfig {
                                 Roles: ADMINISTRADOR, ANALISTA, CLIENTE, SERVICIO_ESCRITURA y SERVICIO_LECTURA \
                                 (JWT de servicio entre APIs).
 
-                                **Trazabilidad:** cada operacion indica su ID de API (API-01 a API-08) segun el \
-                                documento de la Entrega 1.
+                                **Trazabilidad:** las operaciones API-01 a API-08 siguen el documento de la Entrega 1; \
+                                API-09 agrega la baja de medios de pago.
 
                                 **Errores:** todos usan el formato `ErrorResponse` (`timestamp`, `status`, `code`, \
                                 `message`, `path`, `correlationId`). El `correlationId` se toma del header \

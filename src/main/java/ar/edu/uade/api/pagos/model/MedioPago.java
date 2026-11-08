@@ -54,6 +54,8 @@ public class MedioPago {
     public String getDetalleEnmascarado() { return detalleEnmascarado; }
     public Boolean getActivo() { return activo; }
 
+    public void desactivar() { this.activo = false; }
+
     @Override
     public String toString() {
         return "MedioPago{id=" + id + ", codigoMedioPago=" + codigoMedioPago + ", tipo=" + tipo + "}";

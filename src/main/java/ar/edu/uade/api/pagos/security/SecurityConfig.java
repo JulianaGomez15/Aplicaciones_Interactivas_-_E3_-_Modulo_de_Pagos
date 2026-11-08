@@ -64,6 +64,8 @@ public class SecurityConfig {
                         .hasAnyRole(CLIENTE, ADMINISTRADOR, SERVICIO_LECTURA)
                         // API-07
                         .requestMatchers(HttpMethod.POST, "/api/v1/payment-methods").hasRole(CLIENTE)
+                        // API-09
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/payment-methods/*").hasRole(CLIENTE)
 
                         .anyRequest().denyAll())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

@@ -28,6 +28,7 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -92,6 +93,24 @@ class PagosApiTest {
     }
 
     // ------------------------------------------------------------------ casos
+
+    @Test
+    void eliminarMedioPagoDevuelve204YLoDesactiva() throws Exception {
+        String ana = clienteAna();
+        String medio = registrarMedio(ana, "4111111111111111");
+        String ruta = "/api/v1/payment-methods/" + medio;
+
+        send(delete(ruta), clienteBruno(), null).andExpect(status().isForbidden());
+        send(delete(ruta), ana, null).andExpect(status().isNoContent())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(""));
+        send(delete(ruta), ana, null).andExpect(status().isNoContent());
+        send(delete("/api/v1/payment-methods/" + UUID.randomUUID()), ana, null)
+                .andExpect(status().isNotFound());
+        send(post(PAGOS), pedidos(), crearPagoJson(PedidosClientSimulado.PEDIDO_3, ANA,
+                medio, "32000.00", "medio-eliminado"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("PAYMENT_METHOD_INVALID")));
+    }
 
     @Test
     void cicloCompletoIdempotenciaYReembolsos() throws Exception {

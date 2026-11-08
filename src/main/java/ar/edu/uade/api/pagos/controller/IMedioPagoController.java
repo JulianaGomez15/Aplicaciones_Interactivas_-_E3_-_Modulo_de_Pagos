@@ -4,12 +4,15 @@ import ar.edu.uade.api.pagos.dto.MedioPagoRequest;
 import ar.edu.uade.api.pagos.dto.MedioPagoResponse;
 import ar.edu.uade.api.pagos.security.JwtPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
+
+import java.util.UUID;
 
 @Tag(name = "Medios de pago", description = "Medios de pago simulados: solo se guarda un detalle enmascarado")
 @SecurityRequirement(name = "bearerAuth")
@@ -32,4 +35,16 @@ public interface IMedioPagoController {
                     @ApiResponse(responseCode = "403", description = "FORBIDDEN: el rol no es CLIENTE")
             })
     ResponseEntity<MedioPagoResponse> registrar(MedioPagoRequest dto, JwtPrincipal principal);
+
+    @Operation(operationId = "API-09_eliminarMedioPago", summary = "Eliminar medio de pago",
+            description = "Desactiva un medio de pago del usuario del JWT sin borrar los pagos historicos. "
+                    + "Repetir la solicitud devuelve 204. **Rol:** CLIENTE.",
+            responses = {
+                    @ApiResponse(responseCode = "204", description = "Medio de pago desactivado; sin cuerpo"),
+                    @ApiResponse(responseCode = "401", description = "UNAUTHORIZED"),
+                    @ApiResponse(responseCode = "403", description = "FORBIDDEN: el medio pertenece a otro usuario"),
+                    @ApiResponse(responseCode = "404", description = "NOT_FOUND: no existe el medio de pago")
+            })
+    ResponseEntity<Void> eliminar(@Parameter(description = "Codigo publico del medio de pago") UUID codigoMedioPago,
+                                  JwtPrincipal principal);
 }

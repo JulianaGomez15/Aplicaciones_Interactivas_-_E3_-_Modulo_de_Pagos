@@ -74,6 +74,8 @@ class OpenApiContractTest {
                 codigos("/api/v1/payments", "get"));                                        // API-06
         assertEquals(Set.of("201", "400", "401", "403"),
                 codigos("/api/v1/payment-methods", "post"));                                // API-07
+        assertEquals(Set.of("204", "401", "403", "404"),
+                codigos("/api/v1/payment-methods/{codigoMedioPago}", "delete"));            // API-09
         assertEquals(Set.of("200", "401", "403", "404"),
                 codigos("/api/v1/payments/{codigoPago}/history", "get"));                   // API-08
     }
@@ -84,8 +86,15 @@ class OpenApiContractTest {
         assertEquals(Set.of("/api/v1/payments", "/api/v1/payments/{codigoPago}",
                         "/api/v1/payments/{codigoPago}/approve", "/api/v1/payments/{codigoPago}/reject",
                         "/api/v1/payments/{codigoPago}/refund", "/api/v1/payments/{codigoPago}/history",
-                        "/api/v1/payment-methods", "/auth/login"),
+                        "/api/v1/payment-methods", "/api/v1/payment-methods/{codigoMedioPago}", "/auth/login"),
                 paths.keySet());
+    }
+
+    @Test
+    void eliminarMedioPagoDocumenta204SinCuerpo() throws Exception {
+        String ruta = "$.paths['/api/v1/payment-methods/{codigoMedioPago}'].delete";
+        assertEquals("API-09_eliminarMedioPago", leer(ruta + ".operationId"));
+        assertFalse(existe(ruta + ".responses['204'].content"));
     }
 
     @Test
