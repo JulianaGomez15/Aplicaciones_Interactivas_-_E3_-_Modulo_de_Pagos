@@ -16,7 +16,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 // Genera el contrato OpenAPI (el "archivo del Swagger") en docs/, sin tener que levantar el servidor:
 //   mvn test -Dtest=ExportarOpenApiTest
-@SpringBootTest
+@SpringBootTest (properties = "integraciones.modo=simulado")
 @AutoConfigureMockMvc
 class ExportarOpenApiTest {
 

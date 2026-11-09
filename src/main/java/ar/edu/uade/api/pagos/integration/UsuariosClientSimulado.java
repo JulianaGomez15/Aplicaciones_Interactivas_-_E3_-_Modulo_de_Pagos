@@ -3,6 +3,7 @@ package ar.edu.uade.api.pagos.integration;
 import ar.edu.uade.api.pagos.dto.UsuarioExternoDto;
 import ar.edu.uade.api.pagos.excepcion.ErrorCode;
 import ar.edu.uade.api.pagos.excepcion.PagoException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -10,6 +11,7 @@ import java.util.UUID;
 
 // Simula al Servicio de Usuarios con un padron fijo.
 @Component
+@ConditionalOnProperty(name = "integraciones.modo", havingValue = "simulado", matchIfMissing = true)
 public class UsuariosClientSimulado implements UsuariosClient {
 
     public static final UUID USUARIO_ANA = UUID.fromString("00000000-0000-0000-0000-000000000001");

@@ -4,10 +4,12 @@ import ar.edu.uade.api.pagos.dto.PagoResponse;
 import ar.edu.uade.api.pagos.dto.ReembolsoResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 // Simula al Servicio de Notificaciones: solo deja traza en el log.
 @Component
+@ConditionalOnProperty(name = "integraciones.modo", havingValue = "simulado", matchIfMissing = true)
 public class NotificacionesClientSimulado implements NotificacionesClient {
 
     private static final Logger log = LoggerFactory.getLogger(NotificacionesClientSimulado.class);
