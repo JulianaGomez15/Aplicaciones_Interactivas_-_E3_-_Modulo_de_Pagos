@@ -3,6 +3,7 @@ package ar.edu.uade.api.pagos.integration;
 import ar.edu.uade.api.pagos.dto.PedidoExternoDto;
 import ar.edu.uade.api.pagos.excepcion.ErrorCode;
 import ar.edu.uade.api.pagos.excepcion.PagoException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -11,6 +12,7 @@ import java.util.UUID;
 
 // Simula al Servicio de Pedidos con un catalogo fijo (BL: mocks mientras no esten los otros modulos).
 @Component
+@ConditionalOnProperty(name = "integraciones.modo", havingValue = "simulado", matchIfMissing = true)
 public class PedidosClientSimulado implements PedidosClient {
 
     public static final UUID PEDIDO_1 = UUID.fromString("00000000-0000-0000-0001-000000000001");

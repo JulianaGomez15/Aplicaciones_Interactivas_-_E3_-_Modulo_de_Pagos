@@ -8,6 +8,7 @@ import ar.edu.uade.api.pagos.services.MedioPagoService;
 import ar.edu.uade.api.pagos.services.PagoService;
 import ar.edu.uade.api.pagos.services.ReembolsoService;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -16,6 +17,7 @@ import java.util.function.Supplier;
 
 // Carga datos de demo SIEMPRE a traves de los Services (nunca directo a los Repositories).
 @Configuration
+@ConditionalOnProperty(name = "integraciones.modo", havingValue = "simulado", matchIfMissing = true)
 public class DemoDataLoader {
 
     @Bean

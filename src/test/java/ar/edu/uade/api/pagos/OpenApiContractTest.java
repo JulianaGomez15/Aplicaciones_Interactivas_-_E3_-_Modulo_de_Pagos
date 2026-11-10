@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 // Verifica que el Swagger generado respete el contrato del TPO (tabla "APIs", DTOs y manejo de errores).
-@SpringBootTest
+@SpringBootTest (properties = "integraciones.modo=simulado")
 @AutoConfigureMockMvc
 class OpenApiContractTest {
 
