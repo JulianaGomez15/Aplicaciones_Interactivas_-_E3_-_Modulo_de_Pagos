@@ -5,10 +5,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "Credenciales de demo")
 public class LoginDto {
 
-    @Schema(example = "api-pedidos")
+    @Schema(example = "demo")
     private String username;
 
-    @Schema(example = "pedidos123")
+    @Schema(example = "demo123")
     private String password;
 
     public LoginDto() {

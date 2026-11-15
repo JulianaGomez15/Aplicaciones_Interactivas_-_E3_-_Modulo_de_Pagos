@@ -23,8 +23,7 @@ import java.util.List;
 @RequestMapping("/auth")
 @Tag(name = "Auth (solo demo)",
         description = "Simula al Servicio de Usuarios, que en el ecosistema es el unico emisor de JWT. "
-                + "Cuentas: admin/admin123, analista/analista123, cliente/cliente123 (Ana), cliente2/cliente123 "
-                + "(Bruno), api-pedidos/pedidos123 (escritura y lectura), api-analitica/analitica123 (lectura).")
+                + "Unica cuenta: demo / demo123 (usuario Ana, con todos los roles).")
 public class AuthController {
 
     private final AuthenticationManager authenticationManager;

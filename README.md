@@ -22,16 +22,17 @@ La base es H2 en memoria (`ddl-auto=create-drop`): cada arranque empieza limpio 
 
 ## Probar un pago completo desde Swagger
 
-1. `POST /auth/login` con `cliente` / `cliente123` → copiar el `token` → botón **Authorize** (pegar solo el token).
-2. `POST /api/v1/payment-methods` con `{"tipo":"TARJETA_CREDITO","numero":"4111111111111111"}` → copiar `codigoMedioPago`.
-3. Login como `api-pedidos` / `pedidos123` → **Authorize** con ese token.
-4. `POST /api/v1/payments` con el pedido `00000000-0000-0000-0001-000000000003`, usuario
+1. `POST /auth/login` con `demo` / `demo123` → copiar el `token` → botón **Authorize** (pegar solo el token).
+   Es el único usuario de demo y sirve para todos los pasos.
+2. `POST /api/v1/payment-methods` con `{"tipo":"TARJETA_CREDITO","numero":"4111111111111111"}` → copiar
+   `codigoMedioPago` (o usar uno de los que imprime la consola al arrancar).
+3. `POST /api/v1/payments` con el pedido `00000000-0000-0000-0001-000000000003`, usuario
    `00000000-0000-0000-0000-000000000001`, ese `codigoMedioPago`, `monto` 32000.00, `moneda` ARS y una `claveControl`.
    El pago se resuelve en el momento con la **autorización simulada** (ver abajo): la respuesta trae `estado` y `motivo`.
    Repetir la misma solicitud devuelve 200 con el mismo pago (idempotencia, no se vuelve a sortear); con otro monto, 409.
-5. Si quedó `APROBADO`: `POST /api/v1/payments/{codigoPago}/refund` (parcial o total). Si no, reintentar con otra
+4. Si quedó `APROBADO`: `POST /api/v1/payments/{codigoPago}/refund` (parcial o total). Si no, reintentar con otra
    `claveControl`.
-6. Con `admin` / `admin123`: `GET /api/v1/payments/{codigoPago}/history`; con `analista`: `GET /api/v1/payments`.
+5. `GET /api/v1/payments/{codigoPago}/history` y `GET /api/v1/payments` para ver el historial y el listado.
 
 Para desactivar un medio de pago propio: `DELETE /api/v1/payment-methods/{codigoMedioPago}` con el token de cliente.
 Devuelve **204 No Content** sin cuerpo; el medio deja de servir para pagos nuevos y los pagos previos se conservan.
@@ -70,14 +71,14 @@ se apagan los colores si la consola no los soporta.
 En el ecosistema el JWT lo emite el Servicio de Usuarios; Pagos solo valida firma y rol. Acá `POST /auth/login`
 lo simula (Swagger → *Authorize* con el token).
 
-| Usuario / contraseña            | Roles                                  |
-|---------------------------------|----------------------------------------|
-| `api-pedidos` / `pedidos123`    | SERVICIO_ESCRITURA, SERVICIO_LECTURA   |
-| `api-analitica` / `analitica123`| SERVICIO_LECTURA                       |
-| `admin` / `admin123`            | ADMINISTRADOR                          |
-| `analista` / `analista123`      | ANALISTA                               |
-| `cliente` / `cliente123`        | CLIENTE (usuario Ana)                  |
-| `cliente2` / `cliente123`       | CLIENTE (usuario Bruno)                |
+Hay **un solo usuario de demo** para todas las transacciones:
+
+| Usuario / contraseña | Usuario del ecosistema | Roles |
+|---|---|---|
+| `demo` / `demo123` | Ana (`00000000-0000-0000-0000-000000000001`) | CLIENTE, SERVICIO_ESCRITURA, SERVICIO_LECTURA, ADMINISTRADOR, ANALISTA |
+
+Los roles se siguen validando por endpoint (columna «Roles» de la tabla de abajo): en la integración, cada JWT que
+emita Usuarios trae solo los suyos.
 
 ## API (tabla "APIs" del TPO y baja de medio de pago)
 
@@ -115,8 +116,8 @@ Los 201 llevan el header `Location`. Una ruta inexistente responde 404 `NOT_FOUN
 | `00000000-0000-0000-0001-000000000004`  | 4200.00   | CANCELADO → `ORDER_NOT_PAYABLE` |
 | `00000000-0000-0000-0001-000000000099`  | —         | simula que Pedidos no responde → 503 |
 
-Usuarios: `00000000-0000-0000-0000-000000000001` Ana, `…02` Bruno, `…03` inactiva (`PAYMENT_USER_INVALID`),
-`…99` simula que Usuarios no responde (503).
+Usuario: `00000000-0000-0000-0000-000000000001` Ana (el único que opera). Dos códigos más sirven solo para
+probar errores: `…03` inactivo (`PAYMENT_USER_INVALID`) y `…99` simula que Usuarios no responde (503).
 
 ## Decisiones donde el documento era ambiguo o incompleto
 

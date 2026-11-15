@@ -2,7 +2,7 @@
   "openapi" : "3.1.0",
   "info" : {
     "title" : "DeliveryGo - Modulo de Pagos",
-    "description" : "API REST del **Modulo de Pagos** (Grupo 3, Aplicaciones Interactivas). Registra intentos de pago de pedidos, los autoriza o rechaza de forma **simulada**, gestiona reembolsos totales o parciales y guarda el historial de estados. No procesa dinero real ni guarda datos reales de tarjetas.\n\n**Autenticacion:** JWT en `Authorization: Bearer <token>`. En el ecosistema lo emite el Servicio de Usuarios; aca `POST /auth/login` lo simula con cuentas de demo. Roles: ADMINISTRADOR, ANALISTA, CLIENTE, SERVICIO_ESCRITURA y SERVICIO_LECTURA (JWT de servicio entre APIs).\n\n**Trazabilidad:** las operaciones API-01 a API-08 siguen el documento de la Entrega 1; API-09 agrega la baja de medios de pago.\n\n**Errores:** todos usan el formato `ErrorResponse` (`timestamp`, `status`, `code`, `message`, `path`, `correlationId`). El `correlationId` se toma del header `X-Correlation-Id`.\n\n**Datos simulados** de otros modulos: pedidos BORRADOR `00000000-0000-0000-0001-00000000000{1,2,3}` (totales 15000.00, 8500.50 y 32000.00), usuarios `00000000-0000-0000-0000-00000000000{1,2}`.",
+    "description" : "API REST del **Modulo de Pagos** (Grupo 3, Aplicaciones Interactivas). Registra intentos de pago de pedidos, los autoriza o rechaza de forma **simulada**, gestiona reembolsos totales o parciales y guarda el historial de estados. No procesa dinero real ni guarda datos reales de tarjetas.\n\n**Autenticacion:** JWT en `Authorization: Bearer <token>`. En el ecosistema lo emite el Servicio de Usuarios; aca `POST /auth/login` lo simula con un unico usuario de demo (`demo` / `demo123`, usuario Ana, con todos los roles). Roles: ADMINISTRADOR, ANALISTA, CLIENTE, SERVICIO_ESCRITURA y SERVICIO_LECTURA (JWT de servicio entre APIs).\n\n**Trazabilidad:** las operaciones API-01 a API-08 siguen el documento de la Entrega 1; API-09 agrega la baja de medios de pago.\n\n**Errores:** todos usan el formato `ErrorResponse` (`timestamp`, `status`, `code`, `message`, `path`, `correlationId`). El `correlationId` se toma del header `X-Correlation-Id`.\n\n**Datos simulados** de otros modulos: pedidos BORRADOR `00000000-0000-0000-0001-00000000000{1,2,3}` (totales 15000.00, 8500.50 y 32000.00), usuario `00000000-0000-0000-0000-000000000001` (Ana).",
     "version" : "1.0"
   },
   "servers" : [ {
@@ -14,7 +14,7 @@
     "description" : "Iniciar, autorizar, rechazar, consultar, listar y reembolsar pagos simulados"
   }, {
     "name" : "Auth (solo demo)",
-    "description" : "Simula al Servicio de Usuarios, que en el ecosistema es el unico emisor de JWT. Cuentas: admin/admin123, analista/analista123, cliente/cliente123 (Ana), cliente2/cliente123 (Bruno), api-pedidos/pedidos123 (escritura y lectura), api-analitica/analitica123 (lectura)."
+    "description" : "Simula al Servicio de Usuarios, que en el ecosistema es el unico emisor de JWT. Unica cuenta: demo / demo123 (usuario Ana, con todos los roles)."
   }, {
     "name" : "Medios de pago",
     "description" : "Medios de pago simulados: solo se guarda un detalle enmascarado"
@@ -870,11 +870,11 @@
         "properties" : {
           "username" : {
             "type" : "string",
-            "example" : "api-pedidos"
+            "example" : "demo"
           },
           "password" : {
             "type" : "string",
-            "example" : "pedidos123"
+            "example" : "demo123"
           }
         }
       },
