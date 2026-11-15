@@ -15,8 +15,13 @@ public class PagoResponse {
 
     private final UUID codigoPedido;
 
-    @Schema(allowableValues = {"PENDIENTE", "APROBADO", "RECHAZADO", "REEMBOLSADO"}, example = "PENDIENTE")
+    @Schema(allowableValues = {"PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO"}, example = "PENDIENTE")
     private final String estado;
+
+    @Schema(description = "Motivo del estado cuando el pago no se aprobo (fondos insuficientes, el banco no "
+            + "autorizo, error: intente de nuevo). Null si esta PENDIENTE o APROBADO", nullable = true,
+            example = "Fondos insuficientes")
+    private final String motivo;
 
     @Schema(example = "15000.00")
     private final BigDecimal monto;
@@ -28,12 +33,13 @@ public class PagoResponse {
     private final LocalDateTime fechaCreacion;
     private final LocalDateTime fechaActualizacion;
 
-    public PagoResponse(UUID codigoPago, UUID codigoPedido, String estado, BigDecimal monto, String moneda,
+    public PagoResponse(UUID codigoPago, UUID codigoPedido, String estado, String motivo, BigDecimal monto, String moneda,
                         MedioPagoResumenResponse medioPago, LocalDateTime fechaCreacion,
                         LocalDateTime fechaActualizacion) {
         this.codigoPago = codigoPago;
         this.codigoPedido = codigoPedido;
         this.estado = estado;
+        this.motivo = motivo;
         this.monto = monto;
         this.moneda = moneda;
         this.medioPago = medioPago;
@@ -44,6 +50,7 @@ public class PagoResponse {
     public UUID getCodigoPago() { return codigoPago; }
     public UUID getCodigoPedido() { return codigoPedido; }
     public String getEstado() { return estado; }
+    public String getMotivo() { return motivo; }
     public BigDecimal getMonto() { return monto; }
     public String getMoneda() { return moneda; }
     public MedioPagoResumenResponse getMedioPago() { return medioPago; }

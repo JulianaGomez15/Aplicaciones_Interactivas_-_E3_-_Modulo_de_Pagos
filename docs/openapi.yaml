@@ -69,7 +69,7 @@ paths:
       parameters:
       - name: estado
         in: query
-        description: "PENDIENTE, APROBADO, RECHAZADO o REEMBOLSADO"
+        description: "PENDIENTE, APROBADO, RECHAZADO, NO_AUTORIZADO, ERROR o REEMBOLSADO"
         required: false
         schema:
           type: string
@@ -162,7 +162,7 @@ paths:
       - Pagos
       summary: Iniciar pago (CU-01 / CU-09)
       description: |-
-        Registra un intento de pago PENDIENTE para un pedido pendiente de pago (BORRADOR).
+        Registra un intento de pago para un pedido pendiente de pago (BORRADOR) y lo resuelve en el momento con la **autorizacion simulada** (sorteo): 70 % APROBADO, 10 % RECHAZADO por fondos insuficientes, 10 % NO_AUTORIZADO (el banco no autorizo) y 10 % ERROR (intente de nuevo, con otra clave de control). El `estado` y el `motivo` vuelven en la respuesta. Con `autorizacion.automatica=false` el pago queda PENDIENTE hasta approve / reject.
 
         **Idempotencia (RN-01):** si la `claveControl` ya existe con los mismos datos (pedido, usuario, monto y medio de pago) responde **200** con el pago original sin crear otro; con datos distintos responde **409 DUPLICATE_PAYMENT_REQUEST**. Un pago RECHAZADO no se reintenta con la misma clave: hace falta una nueva.
 
@@ -178,7 +178,8 @@ paths:
         required: true
       responses:
         "201":
-          description: Pago creado en estado PENDIENTE
+          description: Pago creado; `estado` informa el resultado de la autorizacion
+            simulada
           content:
             '*/*':
               schema:
@@ -191,8 +192,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PagoResponse"
         "400":
-          description: "VALIDATION_ERROR (campos faltantes o con formato invalido)\
-            \ o PAYMENT_METHOD_INVALID (medio inexistente, inactivo o de otro usuario)"
+          description: VALIDATION_ERROR (campos faltantes o con formato invalido)
           content:
             application/json:
               schema:
@@ -217,7 +217,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
-          description: "PAYMENT_AMOUNT_MISMATCH, PAYMENT_USER_INVALID u ORDER_NOT_PAYABLE"
+          description: "PAYMENT_AMOUNT_MISMATCH, PAYMENT_USER_INVALID, ORDER_NOT_PAYABLE\
+            \ o PAYMENT_METHOD_INVALID (medio inexistente, inactivo o de otro usuario)"
           content:
             application/json:
               schema:
@@ -225,68 +226,6 @@ paths:
         "503":
           description: "EXTERNAL_SERVICE_UNAVAILABLE: Pedidos o Usuarios no respondieron;\
             \ no se crea el pago"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      security:
-      - bearerAuth: []
-  /api/v1/payments/{codigoPago}/reject:
-    patch:
-      tags:
-      - Pagos
-      summary: Rechazar pago (CU-03)
-      description: |-
-        Rechazo simulado: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.
-
-        **Rol:** SERVICIO_ESCRITURA.
-      operationId: API-03_rechazarPago
-      parameters:
-      - name: codigoPago
-        in: path
-        description: Codigo publico del pago
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RechazarPagoRequest"
-      responses:
-        "200":
-          description: Pago RECHAZADO (tambien si ya lo estaba)
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/PagoResponse"
-        "400":
-          description: VALIDATION_ERROR (motivo demasiado largo)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: UNAUTHORIZED
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: FORBIDDEN
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: PAYMENT_NOT_FOUND
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: "PAYMENT_INVALID_STATE: el pago esta APROBADO o REEMBOLSADO"
           content:
             application/json:
               schema:
@@ -372,6 +311,119 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       security:
       - bearerAuth: []
+  /api/v1/payment-methods:
+    post:
+      tags:
+      - Medios de pago
+      summary: Registrar medio de pago (CU-08)
+      description: |-
+        Registra un medio de pago simulado para el **usuario del JWT** (el cuerpo no lleva codigo de usuario). Se guardan solo los ultimos 4 digitos (RN-08); el numero completo se descarta.
+
+        Tipos: TARJETA_CREDITO, TARJETA_DEBITO (13 a 19 digitos), BILLETERA_VIRTUAL, TRANSFERENCIA.
+
+        **Rol:** CLIENTE.
+      operationId: API-07_registrarMedioPago
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedioPagoRequest"
+        required: true
+      responses:
+        "201":
+          description: Medio de pago creado y activo
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MedioPagoResponse"
+        "400":
+          description: VALIDATION_ERROR (faltan campos)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: PAYMENT_METHOD_INVALID (tipo no soportado o numero invalido)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "FORBIDDEN: el rol no es CLIENTE"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
+  /api/v1/payments/{codigoPago}/reject:
+    patch:
+      tags:
+      - Pagos
+      summary: Rechazar pago (CU-03)
+      description: |-
+        Rechazo simulado: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.
+
+        **Rol:** SERVICIO_ESCRITURA.
+      operationId: API-03_rechazarPago
+      parameters:
+      - name: codigoPago
+        in: path
+        description: Codigo publico del pago
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RechazarPagoRequest"
+      responses:
+        "200":
+          description: Pago RECHAZADO (tambien si ya lo estaba)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PagoResponse"
+        "400":
+          description: VALIDATION_ERROR (motivo demasiado largo)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: PAYMENT_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "PAYMENT_INVALID_STATE: el pago esta APROBADO o REEMBOLSADO"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
   /api/v1/payments/{codigoPago}/approve:
     patch:
       tags:
@@ -380,7 +432,7 @@ paths:
       description: |-
         Autorizacion simulada: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).
 
-        Con la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 sin cambios (RN-10); si esta RECHAZADO o REEMBOLSADO, 409.
+        Con la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 sin cambios (RN-10); si ya esta en otro estado final, 409.
 
         **Rol:** SERVICIO_ESCRITURA.
       operationId: API-02_aprobarPago
@@ -419,90 +471,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: "PAYMENT_INVALID_STATE: el pago esta RECHAZADO o REEMBOLSADO"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      security:
-      - bearerAuth: []
-  /api/v1/payment-methods:
-    post:
-      tags:
-      - Medios de pago
-      summary: Registrar medio de pago (CU-08)
-      description: |-
-        Registra un medio de pago simulado para el **usuario del JWT** (el cuerpo no lleva codigo de usuario). Se guardan solo los ultimos 4 digitos (RN-08); el numero completo se descarta.
-
-        Tipos: TARJETA_CREDITO, TARJETA_DEBITO (13 a 19 digitos), BILLETERA_VIRTUAL, TRANSFERENCIA.
-
-        **Rol:** CLIENTE.
-      operationId: API-07_registrarMedioPago
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MedioPagoRequest"
-        required: true
-      responses:
-        "201":
-          description: Medio de pago creado y activo
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/MedioPagoResponse"
-        "400":
-          description: PAYMENT_METHOD_INVALID (tipo no soportado o numero invalido)
-            o VALIDATION_ERROR
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: UNAUTHORIZED
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: "FORBIDDEN: el rol no es CLIENTE"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      security:
-      - bearerAuth: []
-  /api/v1/payment-methods/{codigoMedioPago}:
-    delete:
-      tags:
-      - Medios de pago
-      summary: Eliminar medio de pago
-      description: Desactiva un medio de pago del usuario del JWT sin borrar los pagos historicos. Repetir la solicitud devuelve 204. **Rol:** CLIENTE.
-      operationId: API-09_eliminarMedioPago
-      parameters:
-      - name: codigoMedioPago
-        in: path
-        description: Codigo publico del medio de pago
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: Medio de pago desactivado; sin cuerpo
-        "401":
-          description: UNAUTHORIZED
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: "FORBIDDEN: el medio pertenece a otro usuario"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: "NOT_FOUND: no existe el medio de pago"
           content:
             application/json:
               schema:
@@ -601,6 +569,45 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       security:
       - bearerAuth: []
+  /api/v1/payment-methods/{codigoMedioPago}:
+    delete:
+      tags:
+      - Medios de pago
+      summary: Eliminar medio de pago
+      description: Desactiva un medio de pago del usuario del JWT sin borrar los pagos
+        historicos. Repetir la solicitud devuelve 204. **Rol:** CLIENTE.
+      operationId: API-09_eliminarMedioPago
+      parameters:
+      - name: codigoMedioPago
+        in: path
+        description: Codigo publico del medio de pago
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: Medio de pago desactivado; sin cuerpo
+        "401":
+          description: UNAUTHORIZED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "FORBIDDEN: el medio pertenece a otro usuario"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "PAYMENT_METHOD_NOT_FOUND: no existe el medio de pago"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security:
+      - bearerAuth: []
 components:
   schemas:
     ErrorResponse:
@@ -609,7 +616,8 @@ components:
         timestamp:
           type: string
           format: date-time
-          description: Fecha y hora del error (ISO-8601)
+          description: "Fecha y hora del error (ISO-8601, hora local sin zona, igual\
+            \ que las fechas de los pagos)"
         status:
           type: integer
           format: int32
@@ -680,8 +688,18 @@ components:
           - PENDIENTE
           - APROBADO
           - RECHAZADO
+          - NO_AUTORIZADO
+          - ERROR
           - REEMBOLSADO
           example: PENDIENTE
+        motivo:
+          type:
+          - string
+          - "null"
+          description: "Motivo del estado cuando el pago no se aprobo (fondos insuficientes,\
+            \ el banco no autorizo, error: intente de nuevo). Null si esta PENDIENTE\
+            \ o APROBADO"
+          example: Fondos insuficientes
         monto:
           type: number
           example: 15000.0
@@ -743,16 +761,6 @@ components:
       - codigoUsuario
       - moneda
       - monto
-    RechazarPagoRequest:
-      type: object
-      description: Motivo del rechazo simulado
-      properties:
-        motivo:
-          type: string
-          description: Motivo del rechazo (opcional; por defecto 'Rechazo simulado')
-          example: Fondos insuficientes
-          maxLength: 255
-          minLength: 0
     ReembolsoResponse:
       type: object
       description: Reembolso registrado (simulado)
@@ -846,6 +854,16 @@ components:
       required:
       - numero
       - tipo
+    RechazarPagoRequest:
+      type: object
+      description: Motivo del rechazo simulado
+      properties:
+        motivo:
+          type: string
+          description: Motivo del rechazo (opcional; por defecto 'Rechazo simulado')
+          example: Fondos insuficientes
+          maxLength: 255
+          minLength: 0
     PaginaPagosResponse:
       type: object
       description: Pagina de pagos

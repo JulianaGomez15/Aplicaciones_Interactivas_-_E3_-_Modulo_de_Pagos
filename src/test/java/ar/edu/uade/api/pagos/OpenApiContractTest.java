@@ -72,7 +72,7 @@ class OpenApiContractTest {
                 codigos("/api/v1/payments/{codigoPago}/refund", "post"));                   // API-05
         assertEquals(Set.of("200", "400", "401", "403"),
                 codigos("/api/v1/payments", "get"));                                        // API-06
-        assertEquals(Set.of("201", "400", "401", "403"),
+        assertEquals(Set.of("201", "400", "401", "403", "422"),
                 codigos("/api/v1/payment-methods", "post"));                                // API-07
         assertEquals(Set.of("204", "401", "403", "404"),
                 codigos("/api/v1/payment-methods/{codigoMedioPago}", "delete"));            // API-09
@@ -136,7 +136,7 @@ class OpenApiContractTest {
     void dtosCoincidenConElTpo() throws Exception {
         assertEquals(Set.of("codigoPedido", "codigoUsuario", "codigoMedioPago", "monto", "moneda", "claveControl"),
                 propiedades("CrearPagoRequest"));                                            // DTO-01
-        assertEquals(Set.of("codigoPago", "codigoPedido", "estado", "monto", "moneda", "medioPago",
+        assertEquals(Set.of("codigoPago", "codigoPedido", "estado", "motivo", "monto", "moneda", "medioPago",
                 "fechaCreacion", "fechaActualizacion"), propiedades("PagoResponse"));        // DTO-02
         assertEquals(Set.of("tipo", "detalleEnmascarado"), propiedades("MedioPagoResumenResponse"));
         assertEquals(Set.of("motivo"), propiedades("RechazarPagoRequest"));                  // DTO-03

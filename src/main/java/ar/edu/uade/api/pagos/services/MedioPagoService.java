@@ -40,7 +40,7 @@ public class MedioPagoService {
     public void eliminarMedioPago(UUID codigoMedioPago, UUID codigoUsuario) {
         MedioPago medioPago = medioPagoRepository.findByCodigoMedioPago(codigoMedioPago);
         if (Objects.isNull(medioPago)) {
-            throw new PagoException(ErrorCode.NOT_FOUND, "No existe el medio de pago " + codigoMedioPago);
+            throw new PagoException(ErrorCode.PAYMENT_METHOD_NOT_FOUND, "No existe el medio de pago " + codigoMedioPago);
         }
         if (Objects.isNull(codigoUsuario) || !medioPago.getCodigoUsuario().equals(codigoUsuario)) {
             throw new PagoException(ErrorCode.FORBIDDEN, "El medio de pago pertenece a otro usuario");
@@ -52,20 +52,13 @@ public class MedioPagoService {
 
     private MedioPago validar(UUID codigoUsuario, MedioPagoRequest dto) {
 
-        if (Objects.isNull(dto) || Objects.isNull(dto.getTipo()) || dto.getTipo().isBlank()) {
-            throw new PagoException(ErrorCode.PAYMENT_METHOD_INVALID, "El tipo de medio de pago es obligatorio");
-        }
-
+        // @Valid ya garantizo que tipo y numero no vienen vacios.
         TipoMedioPago tipo;
         try {
             tipo = TipoMedioPago.valueOf(dto.getTipo().trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new PagoException(ErrorCode.PAYMENT_METHOD_INVALID,
                     "Tipo de medio de pago no soportado: " + dto.getTipo());
-        }
-
-        if (Objects.isNull(dto.getNumero()) || dto.getNumero().isBlank()) {
-            throw new PagoException(ErrorCode.PAYMENT_METHOD_INVALID, "El numero del medio de pago es obligatorio");
         }
 
         return new MedioPago(codigoUsuario, tipo, enmascarar(tipo, dto.getNumero()));

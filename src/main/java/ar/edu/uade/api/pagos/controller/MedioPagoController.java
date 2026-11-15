@@ -6,7 +6,6 @@ import ar.edu.uade.api.pagos.security.JwtPrincipal;
 import ar.edu.uade.api.pagos.services.MedioPagoService;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -15,7 +14,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.net.URI;
 import java.util.UUID;
 
 @RestController
@@ -32,8 +33,10 @@ public class MedioPagoController implements IMedioPagoController {
     @PostMapping
     public ResponseEntity<MedioPagoResponse> registrar(@Valid @RequestBody MedioPagoRequest dto,
                                                        @Parameter(hidden = true) @AuthenticationPrincipal JwtPrincipal principal) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(medioPagoService.registrarMedioPago(principal.getCodigoUsuario(), dto));
+        MedioPagoResponse creado = medioPagoService.registrarMedioPago(principal.getCodigoUsuario(), dto);
+        URI ubicacion = ServletUriComponentsBuilder.fromCurrentRequestUri().path("/{codigoMedioPago}")
+                .buildAndExpand(creado.getCodigoMedioPago()).toUri();
+        return ResponseEntity.created(ubicacion).body(creado);
     }
 
     @Override

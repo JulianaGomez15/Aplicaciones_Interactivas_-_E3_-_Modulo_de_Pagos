@@ -1,5 +1,6 @@
 package ar.edu.uade.api.pagos.services;
 
+import ar.edu.uade.api.pagos.consola.Consola;
 import ar.edu.uade.api.pagos.dto.*;
 import ar.edu.uade.api.pagos.excepcion.ErrorCode;
 import ar.edu.uade.api.pagos.excepcion.PagoException;
@@ -16,6 +17,8 @@ import ar.edu.uade.api.pagos.repository.PagoRepository;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -40,13 +43,21 @@ public class PagoService {
     private static final Set<String> CAMPOS_ORDENABLES =
             Set.of("fechaCreacion", "fechaActualizacion", "monto", "estado");
 
+    private static final Logger log = LoggerFactory.getLogger(PagoService.class);
+
+    // Resultado de un cambio de estado: el pago y si realmente cambio (false = operacion repetida, RN-10).
+    private record Cambio(PagoResponse pago, boolean cambio) {
+    }
+
     private final PagoRepository pagoRepository;
     private final MedioPagoRepository medioPagoRepository;
     private final HistorialEstadoPagoRepository historialRepository;
     private final UsuariosClient usuariosClient;
     private final PedidosClient pedidosClient;
     private final NotificacionesGateway notificaciones;
+    private final AutorizadorSimulado autorizador;
     private final PagoMapper mapper;
+    private final Consola consola;
     private final TransactionTemplate transaccion;
 
     public PagoService(PagoRepository pagoRepository,
@@ -55,7 +66,9 @@ public class PagoService {
                        UsuariosClient usuariosClient,
                        PedidosClient pedidosClient,
                        NotificacionesGateway notificaciones,
+                       AutorizadorSimulado autorizador,
                        PagoMapper mapper,
+                       Consola consola,
                        PlatformTransactionManager transactionManager) {
         this.pagoRepository = pagoRepository;
         this.medioPagoRepository = medioPagoRepository;
@@ -63,47 +76,115 @@ public class PagoService {
         this.usuariosClient = usuariosClient;
         this.pedidosClient = pedidosClient;
         this.notificaciones = notificaciones;
+        this.autorizador = autorizador;
         this.mapper = mapper;
+        this.consola = consola;
         this.transaccion = new TransactionTemplate(transactionManager);
     }
 
     // ------------------------------------------------------------ SRV-01 (CU-01 / CU-09)
 
-    // Sin @Transactional a proposito: si dos solicitudes simultaneas con la misma clave chocan con el UNIQUE
-    // de clave_control, la transaccion perdedora se revierte y se vuelve a leer, ya en otra transaccion, el pago
-    // creado por la ganadora (CU-09 4b).
+    // Inicia el pago y, si autorizacion.automatica=true, lo resuelve en el momento con el sorteo simulado
+    // (APROBADO, RECHAZADO por fondos insuficientes, NO_AUTORIZADO o ERROR).
     public ResultadoOperacion<PagoResponse> iniciarPago(CrearPagoRequest dto) {
+        return iniciar(dto, autorizador.isAutomatica());
+    }
 
-        validarSolicitud(dto);
-        BigDecimal monto = normalizarMonto(dto.getMonto());
+    // Deja el pago PENDIENTE sin sortear: lo resuelve despues approve / reject (datos de demo y modo manual).
+    public ResultadoOperacion<PagoResponse> iniciarPagoPendiente(CrearPagoRequest dto) {
+        return iniciar(dto, false);
+    }
+
+    // Sin transaccion propia a proposito: las consultas a Usuarios y Pedidos (HTTP) se hacen ANTES de abrir la
+    // transaccion, y el aviso a Pedidos y la notificacion DESPUES del commit. La base solo queda tomada para
+    // el insert y para el cambio de estado.
+    private ResultadoOperacion<PagoResponse> iniciar(CrearPagoRequest dto, boolean autorizar) {
+
+        // @Valid ya garantizo monto > 0 y a lo sumo 2 decimales; se normaliza la escala para comparar y persistir.
+        BigDecimal monto = dto.getMonto().setScale(2);
+
+        consola.titulo("INICIAR PAGO");
+        consola.paso("SOLICITUD", "Llego el pedido de pago: pedido " + dto.getCodigoPedido() + " por " + monto + " "
+                + dto.getMoneda().toUpperCase());
+        consola.paso("SOLICITUD", "Usuario " + dto.getCodigoUsuario() + " | clave de control " + dto.getClaveControl());
 
         try {
-            return transaccion.execute(status -> registrarPago(dto, monto));
-        } catch (DataIntegrityViolationException e) {
-            return transaccion.execute(status -> {
-                Pago ganador = pagoRepository.findByClaveControl(dto.getClaveControl());
+            // RN-01: misma clave -> pago existente (mismos datos) o 409 (datos distintos).
+            PagoResponse existente = buscarPorClave(dto, monto);
+            if (Objects.nonNull(existente)) {
+                return repetido(existente);
+            }
+
+            MedioPago medioPago = validar(dto, monto);
+
+            PagoResponse creado;
+            try {
+                creado = transaccion.execute(status -> registrarPago(dto, monto, medioPago));
+            } catch (DataIntegrityViolationException e) {
+                // Dos solicitudes simultaneas con la misma clave chocaron con el UNIQUE de clave_control:
+                // la perdedora devuelve el pago que creo la ganadora (CU-09 4b).
+                PagoResponse ganador = buscarPorClave(dto, monto);
                 if (Objects.isNull(ganador)) {
                     throw e;
                 }
-                return respuestaIdempotente(ganador, dto, monto);
-            });
+                return repetido(ganador);
+            }
+            consola.ok("REGISTRO", "Pago " + creado.getCodigoPago() + " creado en estado PENDIENTE");
+
+            if (!autorizar) {
+                consola.resultado(true, "PENDIENTE (se resuelve con approve / reject)");
+                return new ResultadoOperacion<>(creado, true);
+            }
+
+            AutorizadorSimulado.Sorteo sorteo = autorizador.sortear();
+            consola.paso("SORTEO", "Salio el " + sorteo.numero() + " de " + sorteo.total() + " ("
+                    + autorizador.pesos() + ") -> " + sorteo.resultado().getDescripcion());
+
+            PagoResponse resuelto = transaccion.execute(status ->
+                    cambiarEstado(creado.getCodigoPago(), sorteo.resultado().getEstado(), sorteo.motivo())).pago();
+            despuesDeResolver(resuelto);
+            return new ResultadoOperacion<>(resuelto, true);
+
+        } catch (RuntimeException e) {
+            throw fallo(e);
         }
     }
 
-    private ResultadoOperacion<PagoResponse> registrarPago(CrearPagoRequest dto, BigDecimal monto) {
+    private ResultadoOperacion<PagoResponse> repetido(PagoResponse existente) {
+        consola.ok("IDEMPOTENCIA", "La clave de control ya se uso con los mismos datos: se devuelve el pago "
+                + existente.getCodigoPago());
+        consola.resultado(true, existente.getEstado() + " (pago existente, no se crea otro)");
+        return new ResultadoOperacion<>(existente, false);
+    }
 
-        // RN-01: misma clave -> pago existente (mismos datos) o 409 (datos distintos).
-        Pago existente = pagoRepository.findByClaveControl(dto.getClaveControl());
-        if (Objects.nonNull(existente)) {
-            return respuestaIdempotente(existente, dto, monto);
-        }
+    // Transaccion corta de lectura. Devuelve null si la clave no se uso; 409 si se uso con otros datos.
+    private PagoResponse buscarPorClave(CrearPagoRequest dto, BigDecimal monto) {
+        return transaccion.execute(status -> {
+            Pago existente = pagoRepository.findByClaveControl(dto.getClaveControl());
+            if (Objects.isNull(existente)) {
+                return null;
+            }
+            boolean mismosDatos = existente.getCodigoPedido().equals(dto.getCodigoPedido())
+                    && existente.getCodigoUsuario().equals(dto.getCodigoUsuario())
+                    && existente.getMedioPago().getCodigoMedioPago().equals(dto.getCodigoMedioPago())
+                    && existente.getMonto().compareTo(monto) == 0;
+            if (!mismosDatos) {
+                throw new PagoException(ErrorCode.DUPLICATE_PAYMENT_REQUEST,
+                        "La clave de control ya fue usada con datos distintos: " + dto.getClaveControl());
+            }
+            return mapper.toResponse(existente);
+        });
+    }
 
-        // Dependencias externas: el usuario, el medio de pago y el pedido deben ser validos.
+    // Validaciones contra otros modulos y contra los medios de pago. Corre sin transaccion abierta.
+    private MedioPago validar(CrearPagoRequest dto, BigDecimal monto) {
+
         UsuarioExternoDto usuario = usuariosClient.buscarUsuario(dto.getCodigoUsuario());
         if (Objects.isNull(usuario) || !usuario.isActivo()) {
             throw new PagoException(ErrorCode.PAYMENT_USER_INVALID,
                     "El usuario no existe o esta inactivo: " + dto.getCodigoUsuario());
         }
+        consola.ok("VALIDACION", "Usuario activo: " + usuario.getNombre() + " (consultado a Usuarios)");
 
         MedioPago medioPago = medioPagoRepository.findByCodigoMedioPago(dto.getCodigoMedioPago());
         if (Objects.isNull(medioPago) || !medioPago.getActivo()
@@ -111,19 +192,27 @@ public class PagoService {
             throw new PagoException(ErrorCode.PAYMENT_METHOD_INVALID,
                     "El medio de pago no existe, esta inactivo o pertenece a otro usuario");
         }
+        consola.ok("VALIDACION", "Medio de pago activo y del usuario: " + medioPago.getTipo() + " "
+                + medioPago.getDetalleEnmascarado());
 
-        PedidoExternoDto pedido = pedidosClient.buscarPedido(dto.getCodigoPedido());
+        PedidoExternoDto pedido = pedidosClient.buscarPedido(dto.getCodigoPedido(), dto.getCodigoUsuario());
         if (Objects.isNull(pedido) || !"BORRADOR".equals(pedido.getEstado())) {
             throw new PagoException(ErrorCode.ORDER_NOT_PAYABLE,
                     "El pedido no existe o no esta pendiente de pago: " + dto.getCodigoPedido());
         }
+        consola.ok("VALIDACION", "Pedido pendiente de pago (BORRADOR), total " + pedido.getTotal()
+                + " (consultado a Pedidos)");
 
         // RN-02: el importe debe coincidir exactamente con el total del pedido.
         if (pedido.getTotal().compareTo(monto) != 0) {
             throw new PagoException(ErrorCode.PAYMENT_AMOUNT_MISMATCH,
                     "El monto " + monto + " no coincide con el total del pedido " + pedido.getTotal());
         }
+        consola.ok("VALIDACION", "El monto coincide con el total del pedido");
+        return medioPago;
+    }
 
+    private PagoResponse registrarPago(CrearPagoRequest dto, BigDecimal monto, MedioPago medioPago) {
         Pago pago = new Pago(dto.getCodigoPedido(), dto.getCodigoUsuario(), monto,
                 dto.getMoneda().toUpperCase(), dto.getClaveControl(), medioPago);
         HistorialEstadoPago alta = new HistorialEstadoPago(null, EstadoPago.PENDIENTE, "Pago iniciado");
@@ -131,67 +220,100 @@ public class PagoService {
 
         pagoRepository.save(pago);
         historialRepository.save(alta);
-        return new ResultadoOperacion<>(mapper.toResponse(pago), true);
-    }
-
-    private ResultadoOperacion<PagoResponse> respuestaIdempotente(Pago existente, CrearPagoRequest dto,
-                                                                  BigDecimal monto) {
-        boolean mismosDatos = existente.getCodigoPedido().equals(dto.getCodigoPedido())
-                && existente.getCodigoUsuario().equals(dto.getCodigoUsuario())
-                && existente.getMedioPago().getCodigoMedioPago().equals(dto.getCodigoMedioPago())
-                && existente.getMonto().compareTo(monto) == 0;
-        if (!mismosDatos) {
-            throw new PagoException(ErrorCode.DUPLICATE_PAYMENT_REQUEST,
-                    "La clave de control ya fue usada con datos distintos: " + dto.getClaveControl());
-        }
-        return new ResultadoOperacion<>(mapper.toResponse(existente), false);
+        return mapper.toResponse(pago);
     }
 
     // ------------------------------------------------------------ SRV-02 (CU-02)
 
-    @Transactional
     public PagoResponse aprobarPago(UUID codigoPago) {
-
-        Pago pago = buscarEntidad(codigoPago);
-
-        // RN-10: repetir la operacion no genera efectos.
-        if (pago.getEstado() == EstadoPago.APROBADO) {
-            return mapper.toResponse(pago);
-        }
-
-        EstadoPago anterior = pago.getEstado();
-        pago.aprobar(); // valida RN-04
-        registrarHistorial(pago, anterior, "Autorizacion simulada aprobada");
-        pagoRepository.save(pago);
-
-        PagoResponse respuesta = mapper.toResponse(pago);
-        notificaciones.comprobantePago(respuesta);
-        return respuesta;
+        return resolverManual("APROBAR PAGO", codigoPago, EstadoPago.APROBADO, "Autorizacion simulada aprobada");
     }
 
     // ------------------------------------------------------------ SRV-03 (CU-03)
 
-    @Transactional
     public PagoResponse rechazarPago(UUID codigoPago, RechazarPagoRequest dto) {
-
-        Pago pago = buscarEntidad(codigoPago);
-
-        if (pago.getEstado() == EstadoPago.RECHAZADO) {
-            return mapper.toResponse(pago);
-        }
-
         String motivo = (Objects.isNull(dto) || Objects.isNull(dto.getMotivo()) || dto.getMotivo().isBlank())
                 ? "Rechazo simulado"
                 : dto.getMotivo().trim();
+        return resolverManual("RECHAZAR PAGO", codigoPago, EstadoPago.RECHAZADO, motivo);
+    }
 
+    private PagoResponse resolverManual(String operacion, UUID codigoPago, EstadoPago destino, String motivo) {
+        consola.titulo(operacion);
+        consola.paso("SOLICITUD", "Pago " + codigoPago + " -> " + destino);
+        try {
+            Cambio cambio = transaccion.execute(status -> cambiarEstado(codigoPago, destino, motivo));
+
+            // RN-10: repetir la operacion no genera efectos (ni aviso ni notificacion).
+            if (!cambio.cambio()) {
+                consola.ok("IDEMPOTENCIA", "El pago ya estaba " + destino + ": no se repite la operacion");
+                consola.resultado(true, destino + " (sin cambios)");
+                return cambio.pago();
+            }
+            despuesDeResolver(cambio.pago());
+            return cambio.pago();
+
+        } catch (RuntimeException e) {
+            throw fallo(e);
+        }
+    }
+
+    // Dentro de la transaccion: valida la transicion (RN-04), cambia el estado y deja el historial (RN-09).
+    private Cambio cambiarEstado(UUID codigoPago, EstadoPago destino, String motivo) {
+        Pago pago = buscarEntidad(codigoPago);
+        if (pago.getEstado() == destino) {
+            return new Cambio(mapper.toResponse(pago), false);
+        }
         EstadoPago anterior = pago.getEstado();
-        pago.rechazar(); // valida RN-04
+        pago.resolver(destino, destino == EstadoPago.APROBADO ? null : motivo);
         registrarHistorial(pago, anterior, motivo);
-        pagoRepository.save(pago);
+        pagoRepository.saveAndFlush(pago);
+        return new Cambio(mapper.toResponse(pago), true);
+    }
 
-        PagoResponse respuesta = mapper.toResponse(pago);
-        notificaciones.avisoRechazo(respuesta, motivo);
-        return respuesta;
+    // Ya con el commit hecho: se avisa a Pedidos y se notifica al usuario. Si alguno falla, el pago no cambia.
+    private void despuesDeResolver(PagoResponse pago) {
+        boolean aprobado = EstadoPago.APROBADO.name().equals(pago.getEstado());
+        String detalle = aprobado ? "APROBADO" : pago.getEstado() + " - " + pago.getMotivo();
+
+        if (aprobado) {
+            consola.ok("AUTORIZACION", "Pago APROBADO");
+        } else {
+            consola.fallo("AUTORIZACION", "Pago " + detalle);
+        }
+
+        avisarAPedidos(pago);
+
+        if (aprobado) {
+            notificaciones.comprobantePago(pago);
+        } else {
+            notificaciones.avisoRechazo(pago, pago.getMotivo());
+        }
+        consola.resultado(aprobado, detalle);
+    }
+
+    private void avisarAPedidos(PagoResponse pago) {
+        try {
+            if (pedidosClient.avisarResultadoPago(pago)) {
+                consola.ok("PEDIDOS", "Aviso enviado a Pedidos: el pago del pedido " + pago.getCodigoPedido()
+                        + " quedo " + pago.getEstado());
+            } else {
+                consola.paso("PEDIDOS", "Sin endpoint de aviso configurado: Pedidos recibe el resultado en la respuesta");
+            }
+        } catch (RuntimeException e) {
+            consola.fallo("PEDIDOS", "No se pudo avisar a Pedidos (el pago se mantiene)");
+            log.error("No se pudo avisar a Pedidos el resultado del pago {}: {}", pago.getCodigoPago(), e.getMessage());
+        }
+    }
+
+    // Cierra el bloque de consola cuando la operacion termina con error y devuelve la misma excepcion.
+    private RuntimeException fallo(RuntimeException e) {
+        String detalle = e instanceof PagoException pe ? pe.getCode() + ": " + pe.getMessage()
+                : e.getClass().getSimpleName();
+        consola.fallo("ERROR", detalle);
+        consola.resultado(false, e instanceof PagoException pe
+                ? "No se realizo la operacion (" + pe.getCode() + ")" : "No se realizo la operacion");
+        return e;
     }
 
     // ------------------------------------------------------------ SRV-04 (CU-04)
@@ -259,25 +381,6 @@ public class PagoService {
         HistorialEstadoPago registro = new HistorialEstadoPago(anterior, pago.getEstado(), motivo);
         pago.agregarHistorial(registro);
         historialRepository.save(registro);
-    }
-
-    private void validarSolicitud(CrearPagoRequest dto) {
-        if (Objects.isNull(dto) || Objects.isNull(dto.getCodigoPedido()) || Objects.isNull(dto.getCodigoUsuario())
-                || Objects.isNull(dto.getCodigoMedioPago()) || Objects.isNull(dto.getMoneda())
-                || Objects.isNull(dto.getClaveControl()) || dto.getClaveControl().isBlank()) {
-            throw new PagoException(ErrorCode.VALIDATION_ERROR, "Faltan campos obligatorios en la solicitud de pago");
-        }
-    }
-
-    // Monto > 0 y a lo sumo 2 decimales; se normaliza a escala 2 para comparar y persistir.
-    private BigDecimal normalizarMonto(BigDecimal monto) {
-        if (Objects.isNull(monto) || monto.signum() <= 0) {
-            throw new PagoException(ErrorCode.VALIDATION_ERROR, "El monto debe ser mayor que cero");
-        }
-        if (monto.stripTrailingZeros().scale() > 2) {
-            throw new PagoException(ErrorCode.VALIDATION_ERROR, "El monto admite como maximo 2 decimales");
-        }
-        return monto.setScale(2);
     }
 
     private EstadoPago parsearEstado(String estado) {

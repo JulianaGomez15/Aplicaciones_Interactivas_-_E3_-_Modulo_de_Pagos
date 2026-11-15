@@ -25,7 +25,11 @@ public interface IPagoController {
 
     @Operation(operationId = "API-01_iniciarPago", summary = "Iniciar pago (CU-01 / CU-09)",
             description = """
-                    Registra un intento de pago PENDIENTE para un pedido pendiente de pago (BORRADOR).
+                    Registra un intento de pago para un pedido pendiente de pago (BORRADOR) y lo resuelve en el \
+                    momento con la **autorizacion simulada** (sorteo): 70 % APROBADO, 10 % RECHAZADO por fondos \
+                    insuficientes, 10 % NO_AUTORIZADO (el banco no autorizo) y 10 % ERROR (intente de nuevo, con otra \
+                    clave de control). El `estado` y el `motivo` vuelven en la respuesta. Con \
+                    `autorizacion.automatica=false` el pago queda PENDIENTE hasta approve / reject.
 
                     **Idempotencia (RN-01):** si la `claveControl` ya existe con los mismos datos \
                     (pedido, usuario, monto y medio de pago) responde **200** con el pago original sin crear otro; \
@@ -38,19 +42,21 @@ public interface IPagoController {
 
                     **Rol:** SERVICIO_ESCRITURA (JWT de servicio de Pedidos).""",
             responses = {
-                    @ApiResponse(responseCode = "201", description = "Pago creado en estado PENDIENTE",
+                    @ApiResponse(responseCode = "201", description = "Pago creado; `estado` informa el resultado de la "
+                            + "autorizacion simulada",
                             content = @Content(schema = @Schema(implementation = PagoResponse.class))),
                     @ApiResponse(responseCode = "200", description = "La clave de control ya se uso con los mismos "
                             + "datos: se devuelve el pago existente",
                             content = @Content(schema = @Schema(implementation = PagoResponse.class))),
                     @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR (campos faltantes o con formato "
-                            + "invalido) o PAYMENT_METHOD_INVALID (medio inexistente, inactivo o de otro usuario)"),
+                            + "invalido)"),
                     @ApiResponse(responseCode = "401", description = "UNAUTHORIZED: falta el JWT o no es valido"),
                     @ApiResponse(responseCode = "403", description = "FORBIDDEN: el rol no tiene permiso de escritura"),
                     @ApiResponse(responseCode = "409", description = "DUPLICATE_PAYMENT_REQUEST: la clave de control "
                             + "ya se uso con datos distintos"),
-                    @ApiResponse(responseCode = "422", description = "PAYMENT_AMOUNT_MISMATCH, PAYMENT_USER_INVALID u "
-                            + "ORDER_NOT_PAYABLE"),
+                    @ApiResponse(responseCode = "422", description = "PAYMENT_AMOUNT_MISMATCH, PAYMENT_USER_INVALID, "
+                            + "ORDER_NOT_PAYABLE o PAYMENT_METHOD_INVALID (medio inexistente, inactivo o de otro "
+                            + "usuario)"),
                     @ApiResponse(responseCode = "503", description = "EXTERNAL_SERVICE_UNAVAILABLE: Pedidos o Usuarios "
                             + "no respondieron; no se crea el pago")
             })
@@ -62,7 +68,7 @@ public interface IPagoController {
                     comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).
 
                     Con la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 \
-                    sin cambios (RN-10); si esta RECHAZADO o REEMBOLSADO, 409.
+                    sin cambios (RN-10); si ya esta en otro estado final, 409.
 
                     **Rol:** SERVICIO_ESCRITURA.""",
             responses = {
@@ -164,7 +170,7 @@ public interface IPagoController {
                     @ApiResponse(responseCode = "403", description = "FORBIDDEN")
             })
     ResponseEntity<PaginaPagosResponse> listar(
-            @Parameter(description = "PENDIENTE, APROBADO, RECHAZADO o REEMBOLSADO") String estado,
+            @Parameter(description = "PENDIENTE, APROBADO, RECHAZADO, NO_AUTORIZADO, ERROR o REEMBOLSADO") String estado,
             @Parameter(description = "Codigo del usuario que pago") UUID codigoUsuario,
             @Parameter(description = "Codigo del pedido (CU-07: intentos de pago del pedido)") UUID codigoPedido,
             @Parameter(description = "Fecha de creacion desde (inclusive), formato yyyy-MM-dd",

@@ -44,6 +44,10 @@ public class Pago {
     @Column(name = "clave_control", nullable = false, unique = true)
     private String claveControl;
 
+    // Motivo del estado actual (rechazo, no autorizado, error); null mientras esta PENDIENTE.
+    @Column(name = "motivo_estado")
+    private String motivoEstado;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "medio_pago_id", nullable = false)
     private MedioPago medioPago;
@@ -98,27 +102,29 @@ public class Pago {
     // ---- Reglas que dependen solo del estado (RN-04 y RN-06) ----
 
     public void aprobar() {
-        transicionarA(EstadoPago.APROBADO);
+        resolver(EstadoPago.APROBADO, null);
     }
 
-    public void rechazar() {
-        transicionarA(EstadoPago.RECHAZADO);
+    public void rechazar(String motivo) {
+        resolver(EstadoPago.RECHAZADO, motivo);
     }
 
     public void marcarReembolsado() {
-        transicionarA(EstadoPago.REEMBOLSADO);
+        resolver(EstadoPago.REEMBOLSADO, null);
     }
 
     public boolean puedeReembolsarse() {
         return estado == EstadoPago.APROBADO;
     }
 
-    private void transicionarA(EstadoPago destino) {
+    // Unico punto donde cambia el estado: valida la transicion (RN-04) y guarda el motivo.
+    public void resolver(EstadoPago destino, String motivo) {
         if (!estado.permiteTransicionA(destino)) {
             throw new PagoException(ErrorCode.PAYMENT_INVALID_STATE,
                     "Transicion invalida: " + estado + " -> " + destino);
         }
         this.estado = destino;
+        this.motivoEstado = motivo;
     }
 
     // Mantiene sincronizada la relacion bidireccional en memoria.
@@ -139,6 +145,7 @@ public class Pago {
     public BigDecimal getMonto() { return monto; }
     public String getMoneda() { return moneda; }
     public EstadoPago getEstado() { return estado; }
+    public String getMotivoEstado() { return motivoEstado; }
     public String getClaveControl() { return claveControl; }
     public MedioPago getMedioPago() { return medioPago; }
     public List<Reembolso> getReembolsos() { return reembolsos; }

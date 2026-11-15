@@ -29,8 +29,9 @@ public interface IMedioPagoController {
             responses = {
                     @ApiResponse(responseCode = "201", description = "Medio de pago creado y activo",
                             content = @Content(schema = @Schema(implementation = MedioPagoResponse.class))),
-                    @ApiResponse(responseCode = "400", description = "PAYMENT_METHOD_INVALID (tipo no soportado o "
-                            + "numero invalido) o VALIDATION_ERROR"),
+                    @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR (faltan campos)"),
+                    @ApiResponse(responseCode = "422", description = "PAYMENT_METHOD_INVALID (tipo no soportado o "
+                            + "numero invalido)"),
                     @ApiResponse(responseCode = "401", description = "UNAUTHORIZED"),
                     @ApiResponse(responseCode = "403", description = "FORBIDDEN: el rol no es CLIENTE")
             })
@@ -43,7 +44,7 @@ public interface IMedioPagoController {
                     @ApiResponse(responseCode = "204", description = "Medio de pago desactivado; sin cuerpo"),
                     @ApiResponse(responseCode = "401", description = "UNAUTHORIZED"),
                     @ApiResponse(responseCode = "403", description = "FORBIDDEN: el medio pertenece a otro usuario"),
-                    @ApiResponse(responseCode = "404", description = "NOT_FOUND: no existe el medio de pago")
+                    @ApiResponse(responseCode = "404", description = "PAYMENT_METHOD_NOT_FOUND: no existe el medio de pago")
             })
     ResponseEntity<Void> eliminar(@Parameter(description = "Codigo publico del medio de pago") UUID codigoMedioPago,
                                   JwtPrincipal principal);

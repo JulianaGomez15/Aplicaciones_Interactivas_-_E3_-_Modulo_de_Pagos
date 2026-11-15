@@ -35,7 +35,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "integraciones.modo=simulado")
+// autorizacion.automatica=false: los pagos quedan PENDIENTE y se resuelven con approve / reject (sin sorteo).
+// El sorteo se prueba en AutorizacionSimuladaTest.
+@SpringBootTest(properties = {"integraciones.modo=simulado", "autorizacion.automatica=false"})
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class PagosApiTest {
@@ -105,10 +107,11 @@ class PagosApiTest {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(""));
         send(delete(ruta), ana, null).andExpect(status().isNoContent());
         send(delete("/api/v1/payment-methods/" + UUID.randomUUID()), ana, null)
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is("PAYMENT_METHOD_NOT_FOUND")));
         send(post(PAGOS), pedidos(), crearPagoJson(PedidosClientSimulado.PEDIDO_3, ANA,
                 medio, "32000.00", "medio-eliminado"))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code", is("PAYMENT_METHOD_INVALID")));
     }
 
@@ -122,7 +125,9 @@ class PagosApiTest {
         String json = crearPagoJson(pedido, ANA, medio, "32000.00", "k-1");
         String creado = send(post(PAGOS), pedidos, json)
                 .andExpect(status().isCreated())
+                .andExpect(header().string("Location", matchesPattern(".*/api/v1/payments/[0-9a-f-]{36}")))
                 .andExpect(jsonPath("$.estado", is("PENDIENTE")))
+                .andExpect(jsonPath("$.motivo").doesNotExist())
                 .andExpect(jsonPath("$.medioPago.tipo", is("TARJETA_DEBITO")))
                 .andExpect(jsonPath("$.medioPago.detalleEnmascarado", is("**** **** **** 4242")))
                 .andExpect(jsonPath("$.id").doesNotExist())
@@ -235,7 +240,7 @@ class PagosApiTest {
         // El medio de pago es de Ana, no de Bruno
         send(post(PAGOS), pedidos, crearPagoJson(PedidosClientSimulado.PEDIDO_3,
                 UsuariosClientSimulado.USUARIO_BRUNO, medio, "32000.00", "v-3"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code", is("PAYMENT_METHOD_INVALID")));
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code", is("PAYMENT_METHOD_INVALID")));
 
         // 5c: Pedidos / Usuarios no responden -> 503 y no se crea el pago
         send(post(PAGOS), pedidos, crearPagoJson(PedidosClientSimulado.PEDIDO_SIN_RESPUESTA, ANA, medio, "10.00", "v-4"))
@@ -258,7 +263,7 @@ class PagosApiTest {
 
         // CU-08: tipo no soportado
         send(post("/api/v1/payment-methods"), clienteAna(), "{\"tipo\":\"CHEQUE\",\"numero\":\"1234\"}")
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code", is("PAYMENT_METHOD_INVALID")));
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code", is("PAYMENT_METHOD_INVALID")));
 
         // CU-06: filtros invalidos
         String admin = admin();
@@ -320,7 +325,35 @@ class PagosApiTest {
 
         // Endpoints que ya no existen en el contrato
         send(get(PAGOS + "/order/" + PedidosClientSimulado.PEDIDO_3), admin(), null).andExpect(status().is4xxClientError());
-        send(get(PAGOS + "/" + codigo + "/refunds"), admin(), null).andExpect(status().isForbidden());
+        send(get(PAGOS + "/" + codigo + "/refunds"), admin(), null)
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code", is("NOT_FOUND")));
+    }
+
+    // Ruta, metodo o formato equivocados no deben confundirse con un problema de roles ni dar 500.
+    @Test
+    void rutaMetodoYFormatoEquivocados() throws Exception {
+        String pedidos = pedidos();
+        String ruta = PAGOS + "/" + UUID.randomUUID() + "/approve";
+
+        // El contrato es PATCH: un POST con token valido responde 405, no 403
+        send(post(ruta), pedidos, null)
+                .andExpect(status().isMethodNotAllowed()).andExpect(jsonPath("$.code", is("METHOD_NOT_ALLOWED")));
+        // Sin token sigue siendo 401
+        send(post(ruta), null, null).andExpect(status().isUnauthorized());
+        // Ruta inexistente con token valido: 404
+        send(get("/api/v1/no-existe"), pedidos, null)
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code", is("NOT_FOUND")));
+
+        // Content-Type que no es JSON: 415
+        mvc.perform(post(PAGOS).header("Authorization", "Bearer " + pedidos)
+                        .contentType(MediaType.TEXT_PLAIN).content("hola"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code", is("UNSUPPORTED_MEDIA_TYPE")));
+
+        // Accept que la API no produce: 406 (con el error igual en JSON)
+        mvc.perform(get(PAGOS).header("Authorization", "Bearer " + admin()).accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotAcceptable())
+                .andExpect(jsonPath("$.code", is("NOT_ACCEPTABLE")));
     }
 
     @Test
@@ -335,7 +368,8 @@ class PagosApiTest {
                 .andExpect(jsonPath("$.code", is("PAYMENT_NOT_FOUND")))
                 .andExpect(jsonPath("$.correlationId", is("corr-123")))
                 .andExpect(jsonPath("$.path", is(PAGOS + "/" + inexistente)))
-                .andExpect(jsonPath("$.timestamp", notNullValue()))
+                // Sin zona horaria, igual que las fechas de los pagos
+                .andExpect(jsonPath("$.timestamp", matchesPattern("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?")))
                 .andExpect(jsonPath("$.message", notNullValue()));
 
         // Sin header, el modulo genera uno
