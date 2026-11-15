@@ -43,7 +43,7 @@ paths:
         "200":
           description: JWT emitido
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/TokenDto"
         "401":
@@ -67,10 +67,17 @@ paths:
       parameters:
       - name: estado
         in: query
-        description: "PENDIENTE, APROBADO, RECHAZADO, NO_AUTORIZADO, ERROR o REEMBOLSADO"
+        description: Estado del pago
         required: false
         schema:
           type: string
+          enum:
+          - PENDIENTE
+          - APROBADO
+          - RECHAZADO
+          - NO_AUTORIZADO
+          - ERROR
+          - REEMBOLSADO
       - name: codigoUsuario
         in: query
         description: Codigo del usuario que pago
@@ -132,7 +139,7 @@ paths:
         "200":
           description: Pagina de resultados
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PaginaPagosResponse"
         "400":
@@ -179,14 +186,14 @@ paths:
           description: Pago creado; `estado` informa el resultado de la autorizacion
             simulada
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PagoResponse"
         "200":
           description: "La clave de control ya se uso con los mismos datos: se devuelve\
             \ el pago existente"
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PagoResponse"
         "400":
@@ -260,14 +267,14 @@ paths:
         "201":
           description: Reembolso registrado
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ReembolsoResponse"
         "200":
           description: "La clave de control del reembolso ya se uso: se devuelve el\
             \ reembolso existente"
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/ReembolsoResponse"
         "400":
@@ -331,7 +338,7 @@ paths:
         "201":
           description: Medio de pago creado y activo
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/MedioPagoResponse"
         "400":
@@ -364,9 +371,11 @@ paths:
     patch:
       tags:
       - Pagos
-      summary: Rechazar pago (CU-03)
+      summary: Rechazar pago - modo manual (CU-03)
       description: |-
-        Rechazo simulado: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.
+        **Solo para el modo manual** (`autorizacion.automatica=false`). Por defecto el pago ya sale resuelto de `POST /api/v1/payments` (sorteo) y **Pedidos no necesita llamar a esta operacion**: sobre un pago ya resuelto solo responde 200 (si ya esta RECHAZADO) o 409.
+
+        Rechazo manual: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.
 
         **Rol:** SERVICIO_ESCRITURA.
       operationId: API-03_rechazarPago
@@ -387,7 +396,7 @@ paths:
         "200":
           description: Pago RECHAZADO (tambien si ya lo estaba)
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PagoResponse"
         "400":
@@ -426,9 +435,11 @@ paths:
     patch:
       tags:
       - Pagos
-      summary: Autorizar pago (CU-02)
+      summary: Autorizar pago - modo manual (CU-02)
       description: |-
-        Autorizacion simulada: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).
+        **Solo para el modo manual** (`autorizacion.automatica=false`). Por defecto el pago ya sale resuelto de `POST /api/v1/payments` (sorteo) y **Pedidos no necesita llamar a esta operacion**: sobre un pago ya resuelto solo responde 200 (si ya esta APROBADO) o 409.
+
+        Autorizacion manual: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).
 
         Con la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 sin cambios (RN-10); si ya esta en otro estado final, 409.
 
@@ -446,7 +457,7 @@ paths:
         "200":
           description: Pago APROBADO (tambien si ya lo estaba)
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PagoResponse"
         "401":
@@ -497,7 +508,7 @@ paths:
         "200":
           description: Pago
           content:
-            '*/*':
+            application/json:
               schema:
                 $ref: "#/components/schemas/PagoResponse"
         "401":
@@ -542,7 +553,7 @@ paths:
         "200":
           description: Historial del pago
           content:
-            '*/*':
+            application/json:
               schema:
                 type: array
                 items:
@@ -665,6 +676,11 @@ components:
       properties:
         tipo:
           type: string
+          enum:
+          - TARJETA_CREDITO
+          - TARJETA_DEBITO
+          - BILLETERA_VIRTUAL
+          - TRANSFERENCIA
           example: TARJETA_CREDITO
         detalleEnmascarado:
           type: string
@@ -822,6 +838,11 @@ components:
           format: uuid
         tipo:
           type: string
+          enum:
+          - TARJETA_CREDITO
+          - TARJETA_DEBITO
+          - BILLETERA_VIRTUAL
+          - TRANSFERENCIA
           example: TARJETA_CREDITO
         detalleEnmascarado:
           type: string
@@ -894,9 +915,23 @@ components:
           - string
           - "null"
           description: Null en el alta del pago
+          enum:
+          - PENDIENTE
+          - APROBADO
+          - RECHAZADO
+          - NO_AUTORIZADO
+          - ERROR
+          - REEMBOLSADO
           example: PENDIENTE
         estadoNuevo:
           type: string
+          enum:
+          - PENDIENTE
+          - APROBADO
+          - RECHAZADO
+          - NO_AUTORIZADO
+          - ERROR
+          - REEMBOLSADO
           example: APROBADO
         motivo:
           type: string

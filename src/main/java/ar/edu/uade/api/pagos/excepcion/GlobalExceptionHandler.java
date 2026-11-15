@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.mapping.PropertyReferenceException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
@@ -83,7 +85,10 @@ public class GlobalExceptionHandler {
     // Login con credenciales incorrectas (AuthController).
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponse> credenciales(AuthenticationException ex, HttpServletRequest r) {
-        return build(ErrorCode.UNAUTHORIZED, "Usuario o contrasena incorrectos", r);
+        // Todo 401 debe indicar el esquema de autenticacion (RFC 9110).
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).contentType(MediaType.APPLICATION_JSON)
+                .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
+                .body(ErrorResponseFactory.crear(ErrorCode.UNAUTHORIZED, "Usuario o contrasena incorrectos", r));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -98,7 +103,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ErrorResponse> metodo(HttpRequestMethodNotSupportedException ex, HttpServletRequest r) {
-        return build(ErrorCode.METHOD_NOT_ALLOWED, ex.getMessage(), r);
+        // Todo 405 debe informar en Allow los metodos que la ruta si acepta (RFC 9110).
+        HttpHeaders headers = new HttpHeaders();
+        if (ex.getSupportedHttpMethods() != null) {
+            headers.setAllow(ex.getSupportedHttpMethods());
+        }
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).headers(headers)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(ErrorResponseFactory.crear(ErrorCode.METHOD_NOT_ALLOWED, ex.getMessage(), r));
     }
 
     // El cuerpo no vino como application/json.

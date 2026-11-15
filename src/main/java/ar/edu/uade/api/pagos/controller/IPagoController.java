@@ -62,9 +62,13 @@ public interface IPagoController {
             })
     ResponseEntity<PagoResponse> iniciar(CrearPagoRequest dto);
 
-    @Operation(operationId = "API-02_aprobarPago", summary = "Autorizar pago (CU-02)",
+    @Operation(operationId = "API-02_aprobarPago", summary = "Autorizar pago - modo manual (CU-02)",
             description = """
-                    Autorizacion simulada: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el \
+                    **Solo para el modo manual** (`autorizacion.automatica=false`). Por defecto el pago ya sale \
+                    resuelto de `POST /api/v1/payments` (sorteo) y **Pedidos no necesita llamar a esta operacion**: \
+                    sobre un pago ya resuelto solo responde 200 (si ya esta APROBADO) o 409.
+
+                    Autorizacion manual: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el \
                     comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).
 
                     Con la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 \
@@ -83,9 +87,13 @@ public interface IPagoController {
     ResponseEntity<PagoResponse> aprobar(
             @Parameter(description = "Codigo publico del pago") UUID codigoPago);
 
-    @Operation(operationId = "API-03_rechazarPago", summary = "Rechazar pago (CU-03)",
+    @Operation(operationId = "API-03_rechazarPago", summary = "Rechazar pago - modo manual (CU-03)",
             description = """
-                    Rechazo simulado: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo \
+                    **Solo para el modo manual** (`autorizacion.automatica=false`). Por defecto el pago ya sale \
+                    resuelto de `POST /api/v1/payments` (sorteo) y **Pedidos no necesita llamar a esta operacion**: \
+                    sobre un pago ya resuelto solo responde 200 (si ya esta RECHAZADO) o 409.
+
+                    Rechazo manual: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo \
                     a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin \
                     cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago \
                     nuevo con otra clave de control.
@@ -170,7 +178,9 @@ public interface IPagoController {
                     @ApiResponse(responseCode = "403", description = "FORBIDDEN")
             })
     ResponseEntity<PaginaPagosResponse> listar(
-            @Parameter(description = "PENDIENTE, APROBADO, RECHAZADO, NO_AUTORIZADO, ERROR o REEMBOLSADO") String estado,
+            @Parameter(description = "Estado del pago",
+                    schema = @Schema(type = "string", allowableValues = {"PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO"}))
+            String estado,
             @Parameter(description = "Codigo del usuario que pago") UUID codigoUsuario,
             @Parameter(description = "Codigo del pedido (CU-07: intentos de pago del pedido)") UUID codigoPedido,
             @Parameter(description = "Fecha de creacion desde (inclusive), formato yyyy-MM-dd",

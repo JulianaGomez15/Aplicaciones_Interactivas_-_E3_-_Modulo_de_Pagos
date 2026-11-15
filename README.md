@@ -17,6 +17,9 @@ La base es H2 en memoria (`ddl-auto=create-drop`): cada arranque empieza limpio 
   · YAML: http://localhost:8089/v3/api-docs.yaml
 - **Archivo del contrato** (para entregar o importar en Postman / Swagger Editor): `docs/openapi.yaml` y
   `docs/openapi.json`. Se regeneran sin levantar el servidor con `mvn test -Dtest=ExportarOpenApiTest`.
+- **Swagger general del ecosistema:** `docs/swagger-ecosistema.yaml` es el consolidado de todos los módulos con la
+  sección de Pagos al día (los demás módulos están tal cual los recibimos). Si cambia nuestro contrato hay que
+  volver a copiar ahí nuestras rutas y esquemas.
 - Consola H2: http://localhost:8089/h2-console (`jdbc:h2:mem:pagos`, usuario `sa`, sin contraseña)
 - Tests: `mvn test` (incluye `OpenApiContractTest`, que compara el Swagger generado con el contrato del TPO)
 
@@ -54,7 +57,8 @@ Estados: `PENDIENTE → APROBADO | RECHAZADO | NO_AUTORIZADO | ERROR` y `APROBAD
 de la primera transición son finales: para reintentar hay que mandar otra `claveControl`.
 
 Se configura en `application.properties`: `autorizacion.peso.*` cambia los pesos y `autorizacion.automatica=false`
-vuelve al modo manual (el pago queda `PENDIENTE` hasta `PATCH .../approve` o `.../reject`, que siguen existiendo).
+vuelve al modo manual (el pago queda `PENDIENTE` hasta `PATCH .../approve` o `.../reject`). Con el sorteo activo
+esas dos operaciones no hacen falta: Pedidos solo llama a `POST /api/v1/payments`.
 
 Cuando el pago se resuelve, Pagos **avisa a Pedidos** y **notifica al usuario**, siempre después del commit. El
 endpoint de Pedidos que recibe el aviso todavía no está en su swagger: se configura en
@@ -100,7 +104,7 @@ Errores: `{timestamp, status, code, message, path, correlationId}` (el `correlat
 `REFUND_EXCEEDS_AMOUNT`, `PAYMENT_METHOD_INVALID` (422), `PAYMENT_METHOD_NOT_FOUND` (404), `PAYMENT_USER_INVALID`,
 `ORDER_NOT_PAYABLE`, `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `EXTERNAL_SERVICE_UNAVAILABLE`, `INTERNAL_ERROR`.
 
-Los 201 llevan el header `Location`. Una ruta inexistente responde 404 `NOT_FOUND`, un método equivocado 405
+Los 201 llevan el header `Location`, los 401 `WWW-Authenticate: Bearer` y los 405 `Allow` con los métodos válidos. Una ruta inexistente responde 404 `NOT_FOUND`, un método equivocado 405
 `METHOD_NOT_ALLOWED`, un `Content-Type` que no es JSON 415 `UNSUPPORTED_MEDIA_TYPE` y un `Accept` no soportado 406
 `NOT_ACCEPTABLE` (siempre con JWT válido; sin JWT, 401).
 

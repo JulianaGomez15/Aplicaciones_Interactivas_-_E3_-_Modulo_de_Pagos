@@ -6,6 +6,7 @@ import ar.edu.uade.api.pagos.security.JwtPrincipal;
 import ar.edu.uade.api.pagos.services.MedioPagoService;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -20,7 +21,7 @@ import java.net.URI;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/payment-methods")
+@RequestMapping(value = "/api/v1/payment-methods", produces = MediaType.APPLICATION_JSON_VALUE)
 public class MedioPagoController implements IMedioPagoController {
 
     private final MedioPagoService medioPagoService;

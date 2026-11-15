@@ -342,9 +342,12 @@ class PagosApiTest {
 
         // El contrato es PATCH: un POST con token valido responde 405, no 403
         send(post(ruta), pedidos, null)
-                .andExpect(status().isMethodNotAllowed()).andExpect(jsonPath("$.code", is("METHOD_NOT_ALLOWED")));
+                .andExpect(status().isMethodNotAllowed()).andExpect(jsonPath("$.code", is("METHOD_NOT_ALLOWED")))
+                // El 405 informa que metodo si acepta la ruta
+                .andExpect(header().string("Allow", "PATCH"));
         // Sin token sigue siendo 401
-        send(post(ruta), null, null).andExpect(status().isUnauthorized());
+        send(post(ruta), null, null).andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Bearer"));
         // Ruta inexistente con token valido: 404
         send(get("/api/v1/no-existe"), pedidos, null)
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.code", is("NOT_FOUND")));
@@ -383,7 +386,8 @@ class PagosApiTest {
 
         mvc.perform(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"demo\",\"password\":\"mala\"}"))
-                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code", is("UNAUTHORIZED")));
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code", is("UNAUTHORIZED")))
+                .andExpect(header().string("WWW-Authenticate", "Bearer"));
     }
 
     // Un solo usuario de demo alcanza para todo el recorrido: medio de pago, pago, reembolso, listado e historial.

@@ -197,6 +197,40 @@ class OpenApiContractTest {
         assertTrue(existe("$.paths['/auth/login'].post"));
     }
 
+    // Las respuestas con cuerpo declaran application/json (no "*/*") y los estados y tipos son enums.
+    @Test
+    void mediaTypeJsonYEnums() throws Exception {
+        Map<String, Map<String, Object>> paths = leer("$.paths");
+        for (var ruta : paths.entrySet()) {
+            for (var operacion : ruta.getValue().entrySet()) {
+                Map<String, Map<String, Object>> respuestas = leer("$.paths['" + ruta.getKey() + "']."
+                        + operacion.getKey() + ".responses");
+                for (var respuesta : respuestas.entrySet()) {
+                    Object contenido = respuesta.getValue().get("content");
+                    if (contenido != null) {
+                        assertEquals(Set.of("application/json"), ((Map<?, ?>) contenido).keySet(),
+                                operacion.getKey() + " " + ruta.getKey() + " -> " + respuesta.getKey());
+                    }
+                }
+            }
+        }
+
+        List<String> estados = List.of("PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO");
+        List<String> filtro = leer("$.paths['/api/v1/payments'].get.parameters[?(@.name=='estado')].schema.enum[*]");
+        assertEquals(estados, filtro);
+        assertEquals(estados, leer("$.components.schemas.PagoResponse.properties.estado.enum"));
+        assertEquals(estados, leer("$.components.schemas.HistorialEstadoResponse.properties.estadoNuevo.enum"));
+        List<String> tipos = List.of("TARJETA_CREDITO", "TARJETA_DEBITO", "BILLETERA_VIRTUAL", "TRANSFERENCIA");
+        assertEquals(tipos, leer("$.components.schemas.MedioPagoRequest.properties.tipo.enum"));
+        assertEquals(tipos, leer("$.components.schemas.MedioPagoResponse.properties.tipo.enum"));
+        assertEquals(tipos, leer("$.components.schemas.MedioPagoResumenResponse.properties.tipo.enum"));
+
+        // approve / reject aclaran que son solo para el modo manual
+        String aprobar = leer("$.paths['/api/v1/payments/{codigoPago}/approve'].patch.description");
+        String rechazar = leer("$.paths['/api/v1/payments/{codigoPago}/reject'].patch.description");
+        assertTrue(aprobar.contains("Solo para el modo manual") && rechazar.contains("Solo para el modo manual"));
+    }
+
     @Test
     void tagsEInformacionGeneral() throws Exception {
         assertEquals("DeliveryGo - Modulo de Pagos", leer("$.info.title"));

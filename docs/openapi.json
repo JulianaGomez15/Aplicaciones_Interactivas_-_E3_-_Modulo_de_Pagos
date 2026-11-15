@@ -40,7 +40,7 @@
           "200" : {
             "description" : "JWT emitido",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/TokenDto"
                 }
@@ -69,10 +69,11 @@
         "parameters" : [ {
           "name" : "estado",
           "in" : "query",
-          "description" : "PENDIENTE, APROBADO, RECHAZADO, NO_AUTORIZADO, ERROR o REEMBOLSADO",
+          "description" : "Estado del pago",
           "required" : false,
           "schema" : {
-            "type" : "string"
+            "type" : "string",
+            "enum" : [ "PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO" ]
           }
         }, {
           "name" : "codigoUsuario",
@@ -149,7 +150,7 @@
           "200" : {
             "description" : "Pagina de resultados",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PaginaPagosResponse"
                 }
@@ -210,7 +211,7 @@
           "201" : {
             "description" : "Pago creado; `estado` informa el resultado de la autorizacion simulada",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PagoResponse"
                 }
@@ -220,7 +221,7 @@
           "200" : {
             "description" : "La clave de control ya se uso con los mismos datos: se devuelve el pago existente",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PagoResponse"
                 }
@@ -323,7 +324,7 @@
           "201" : {
             "description" : "Reembolso registrado",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/ReembolsoResponse"
                 }
@@ -333,7 +334,7 @@
           "200" : {
             "description" : "La clave de control del reembolso ya se uso: se devuelve el reembolso existente",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/ReembolsoResponse"
                 }
@@ -426,7 +427,7 @@
           "201" : {
             "description" : "Medio de pago creado y activo",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/MedioPagoResponse"
                 }
@@ -482,8 +483,8 @@
     "/api/v1/payments/{codigoPago}/reject" : {
       "patch" : {
         "tags" : [ "Pagos" ],
-        "summary" : "Rechazar pago (CU-03)",
-        "description" : "Rechazo simulado: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.\n\n**Rol:** SERVICIO_ESCRITURA.",
+        "summary" : "Rechazar pago - modo manual (CU-03)",
+        "description" : "**Solo para el modo manual** (`autorizacion.automatica=false`). Por defecto el pago ya sale resuelto de `POST /api/v1/payments` (sorteo) y **Pedidos no necesita llamar a esta operacion**: sobre un pago ya resuelto solo responde 200 (si ya esta RECHAZADO) o 409.\n\nRechazo manual: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.\n\n**Rol:** SERVICIO_ESCRITURA.",
         "operationId" : "API-03_rechazarPago",
         "parameters" : [ {
           "name" : "codigoPago",
@@ -508,7 +509,7 @@
           "200" : {
             "description" : "Pago RECHAZADO (tambien si ya lo estaba)",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PagoResponse"
                 }
@@ -574,8 +575,8 @@
     "/api/v1/payments/{codigoPago}/approve" : {
       "patch" : {
         "tags" : [ "Pagos" ],
-        "summary" : "Autorizar pago (CU-02)",
-        "description" : "Autorizacion simulada: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).\n\nCon la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 sin cambios (RN-10); si ya esta en otro estado final, 409.\n\n**Rol:** SERVICIO_ESCRITURA.",
+        "summary" : "Autorizar pago - modo manual (CU-02)",
+        "description" : "**Solo para el modo manual** (`autorizacion.automatica=false`). Por defecto el pago ya sale resuelto de `POST /api/v1/payments` (sorteo) y **Pedidos no necesita llamar a esta operacion**: sobre un pago ya resuelto solo responde 200 (si ya esta APROBADO) o 409.\n\nAutorizacion manual: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).\n\nCon la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 sin cambios (RN-10); si ya esta en otro estado final, 409.\n\n**Rol:** SERVICIO_ESCRITURA.",
         "operationId" : "API-02_aprobarPago",
         "parameters" : [ {
           "name" : "codigoPago",
@@ -591,7 +592,7 @@
           "200" : {
             "description" : "Pago APROBADO (tambien si ya lo estaba)",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PagoResponse"
                 }
@@ -664,7 +665,7 @@
           "200" : {
             "description" : "Pago",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PagoResponse"
                 }
@@ -727,7 +728,7 @@
           "200" : {
             "description" : "Historial del pago",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "type" : "array",
                   "items" : {
@@ -908,6 +909,7 @@
         "properties" : {
           "tipo" : {
             "type" : "string",
+            "enum" : [ "TARJETA_CREDITO", "TARJETA_DEBITO", "BILLETERA_VIRTUAL", "TRANSFERENCIA" ],
             "example" : "TARJETA_CREDITO"
           },
           "detalleEnmascarado" : {
@@ -1076,6 +1078,7 @@
           },
           "tipo" : {
             "type" : "string",
+            "enum" : [ "TARJETA_CREDITO", "TARJETA_DEBITO", "BILLETERA_VIRTUAL", "TRANSFERENCIA" ],
             "example" : "TARJETA_CREDITO"
           },
           "detalleEnmascarado" : {
@@ -1158,10 +1161,12 @@
           "estadoAnterior" : {
             "type" : [ "string", "null" ],
             "description" : "Null en el alta del pago",
+            "enum" : [ "PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO" ],
             "example" : "PENDIENTE"
           },
           "estadoNuevo" : {
             "type" : "string",
+            "enum" : [ "PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO" ],
             "example" : "APROBADO"
           },
           "motivo" : {

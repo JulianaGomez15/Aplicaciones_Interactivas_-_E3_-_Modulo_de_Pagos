@@ -6,6 +6,7 @@ import ar.edu.uade.api.pagos.excepcion.ErrorResponseFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -42,6 +43,10 @@ public class JsonSecurityErrorHandler implements AuthenticationEntryPoint, Acces
         ErrorResponse body = ErrorResponseFactory.crear(code, mensaje, request);
 
         response.setStatus(code.getStatus().value());
+        if (code == ErrorCode.UNAUTHORIZED) {
+            // Todo 401 debe indicar el esquema de autenticacion (RFC 9110).
+            response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+        }
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         objectMapper.writeValue(response.getOutputStream(), body);
     }
