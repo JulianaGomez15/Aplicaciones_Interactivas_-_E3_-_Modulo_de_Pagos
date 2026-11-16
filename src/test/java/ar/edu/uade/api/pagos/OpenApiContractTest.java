@@ -72,7 +72,7 @@ class OpenApiContractTest {
                 codigos("/api/v1/payments/{codigoPago}/refund", "post"));                   // API-05
         assertEquals(Set.of("200", "400", "401", "403"),
                 codigos("/api/v1/payments", "get"));                                        // API-06
-        assertEquals(Set.of("201", "400", "401", "403"),
+        assertEquals(Set.of("201", "400", "401", "403", "422"),
                 codigos("/api/v1/payment-methods", "post"));                                // API-07
         assertEquals(Set.of("204", "401", "403", "404"),
                 codigos("/api/v1/payment-methods/{codigoMedioPago}", "delete"));            // API-09
@@ -136,7 +136,7 @@ class OpenApiContractTest {
     void dtosCoincidenConElTpo() throws Exception {
         assertEquals(Set.of("codigoPedido", "codigoUsuario", "codigoMedioPago", "monto", "moneda", "claveControl"),
                 propiedades("CrearPagoRequest"));                                            // DTO-01
-        assertEquals(Set.of("codigoPago", "codigoPedido", "estado", "monto", "moneda", "medioPago",
+        assertEquals(Set.of("codigoPago", "codigoPedido", "estado", "motivo", "monto", "moneda", "medioPago",
                 "fechaCreacion", "fechaActualizacion"), propiedades("PagoResponse"));        // DTO-02
         assertEquals(Set.of("tipo", "detalleEnmascarado"), propiedades("MedioPagoResumenResponse"));
         assertEquals(Set.of("motivo"), propiedades("RechazarPagoRequest"));                  // DTO-03
@@ -195,6 +195,40 @@ class OpenApiContractTest {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
         // El login de demo tambien queda documentado y es publico, para poder obtener el token desde Swagger.
         assertTrue(existe("$.paths['/auth/login'].post"));
+    }
+
+    // Las respuestas con cuerpo declaran application/json (no "*/*") y los estados y tipos son enums.
+    @Test
+    void mediaTypeJsonYEnums() throws Exception {
+        Map<String, Map<String, Object>> paths = leer("$.paths");
+        for (var ruta : paths.entrySet()) {
+            for (var operacion : ruta.getValue().entrySet()) {
+                Map<String, Map<String, Object>> respuestas = leer("$.paths['" + ruta.getKey() + "']."
+                        + operacion.getKey() + ".responses");
+                for (var respuesta : respuestas.entrySet()) {
+                    Object contenido = respuesta.getValue().get("content");
+                    if (contenido != null) {
+                        assertEquals(Set.of("application/json"), ((Map<?, ?>) contenido).keySet(),
+                                operacion.getKey() + " " + ruta.getKey() + " -> " + respuesta.getKey());
+                    }
+                }
+            }
+        }
+
+        List<String> estados = List.of("PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO");
+        List<String> filtro = leer("$.paths['/api/v1/payments'].get.parameters[?(@.name=='estado')].schema.enum[*]");
+        assertEquals(estados, filtro);
+        assertEquals(estados, leer("$.components.schemas.PagoResponse.properties.estado.enum"));
+        assertEquals(estados, leer("$.components.schemas.HistorialEstadoResponse.properties.estadoNuevo.enum"));
+        List<String> tipos = List.of("TARJETA_CREDITO", "TARJETA_DEBITO", "BILLETERA_VIRTUAL", "TRANSFERENCIA");
+        assertEquals(tipos, leer("$.components.schemas.MedioPagoRequest.properties.tipo.enum"));
+        assertEquals(tipos, leer("$.components.schemas.MedioPagoResponse.properties.tipo.enum"));
+        assertEquals(tipos, leer("$.components.schemas.MedioPagoResumenResponse.properties.tipo.enum"));
+
+        // approve / reject aclaran que son solo para el modo manual
+        String aprobar = leer("$.paths['/api/v1/payments/{codigoPago}/approve'].patch.description");
+        String rechazar = leer("$.paths['/api/v1/payments/{codigoPago}/reject'].patch.description");
+        assertTrue(aprobar.contains("Solo para el modo manual") && rechazar.contains("Solo para el modo manual"));
     }
 
     @Test

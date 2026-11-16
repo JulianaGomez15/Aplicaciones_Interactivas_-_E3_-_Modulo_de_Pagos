@@ -67,7 +67,10 @@ public class SecurityConfig {
                         // API-09
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/payment-methods/*").hasRole(CLIENTE)
 
-                        .anyRequest().denyAll())
+                        // Rutas o metodos que no existen: con JWT valido llegan al dispatcher y responden
+                        // 404 NOT_FOUND / 405 METHOD_NOT_ALLOWED (antes daban 403 y parecia un problema de roles).
+                        // Sin JWT siguen dando 401. Todo endpoint real debe tener su regla de rol arriba.
+                        .anyRequest().authenticated())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

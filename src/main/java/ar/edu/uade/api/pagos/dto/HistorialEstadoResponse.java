@@ -8,10 +8,11 @@ import java.time.LocalDateTime;
 @Schema(description = "Un cambio de estado del pago")
 public class HistorialEstadoResponse {
 
-    @Schema(description = "Null en el alta del pago", nullable = true, example = "PENDIENTE")
+    @Schema(description = "Null en el alta del pago", nullable = true, example = "PENDIENTE",
+            allowableValues = {"PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO"})
     private final String estadoAnterior;
 
-    @Schema(example = "APROBADO")
+    @Schema(example = "APROBADO", allowableValues = {"PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO"})
     private final String estadoNuevo;
 
     private final String motivo;

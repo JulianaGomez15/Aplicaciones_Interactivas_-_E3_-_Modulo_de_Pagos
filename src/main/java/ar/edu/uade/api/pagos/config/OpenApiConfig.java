@@ -32,7 +32,8 @@ public class OpenApiConfig {
                                 real ni guarda datos reales de tarjetas.
 
                                 **Autenticacion:** JWT en `Authorization: Bearer <token>`. En el ecosistema lo emite \
-                                el Servicio de Usuarios; aca `POST /auth/login` lo simula con cuentas de demo. \
+                                el Servicio de Usuarios; aca `POST /auth/login` lo simula con un unico usuario de demo \
+                                (`demo` / `demo123`, usuario Ana, con todos los roles). \
                                 Roles: ADMINISTRADOR, ANALISTA, CLIENTE, SERVICIO_ESCRITURA y SERVICIO_LECTURA \
                                 (JWT de servicio entre APIs).
 
@@ -45,7 +46,7 @@ public class OpenApiConfig {
 
                                 **Datos simulados** de otros modulos: pedidos BORRADOR \
                                 `00000000-0000-0000-0001-00000000000{1,2,3}` (totales 15000.00, 8500.50 y 32000.00), \
-                                usuarios `00000000-0000-0000-0000-00000000000{1,2}`."""))
+                                usuario `00000000-0000-0000-0000-000000000001` (Ana)."""))
                 .addServersItem(new Server().url("/").description("Servidor actual"))
                 .components(new Components()
                         .addSecuritySchemes("bearerAuth", new SecurityScheme()

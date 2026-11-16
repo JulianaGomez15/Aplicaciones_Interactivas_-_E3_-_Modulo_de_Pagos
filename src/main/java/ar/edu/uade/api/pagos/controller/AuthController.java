@@ -7,6 +7,7 @@ import ar.edu.uade.api.pagos.security.JwtService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -20,11 +21,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/auth")
+@RequestMapping(value = "/auth", produces = MediaType.APPLICATION_JSON_VALUE)
 @Tag(name = "Auth (solo demo)",
         description = "Simula al Servicio de Usuarios, que en el ecosistema es el unico emisor de JWT. "
-                + "Cuentas: admin/admin123, analista/analista123, cliente/cliente123 (Ana), cliente2/cliente123 "
-                + "(Bruno), api-pedidos/pedidos123 (escritura y lectura), api-analitica/analitica123 (lectura).")
+                + "Unica cuenta: demo / demo123 (usuario Ana, con todos los roles).")
 public class AuthController {
 
     private final AuthenticationManager authenticationManager;

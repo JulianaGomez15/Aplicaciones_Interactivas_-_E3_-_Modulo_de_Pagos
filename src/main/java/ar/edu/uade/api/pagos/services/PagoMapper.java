@@ -16,8 +16,8 @@ class PagoMapper {
 
     PagoResponse toResponse(Pago p) {
         MedioPago m = p.getMedioPago();
-        return new PagoResponse(p.getCodigoPago(), p.getCodigoPedido(), p.getEstado().name(), p.getMonto(),
-                p.getMoneda(), new MedioPagoResumenResponse(m.getTipo().name(), m.getDetalleEnmascarado()),
+        return new PagoResponse(p.getCodigoPago(), p.getCodigoPedido(), p.getEstado().name(), p.getMotivoEstado(),
+                p.getMonto(), p.getMoneda(), new MedioPagoResumenResponse(m.getTipo().name(), m.getDetalleEnmascarado()),
                 p.getFechaCreacion(), p.getFechaActualizacion());
     }
 

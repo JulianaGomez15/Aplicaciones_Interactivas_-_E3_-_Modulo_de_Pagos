@@ -1,5 +1,6 @@
 package ar.edu.uade.api.pagos.integration;
 
+import ar.edu.uade.api.pagos.dto.PagoResponse;
 import ar.edu.uade.api.pagos.dto.PedidoExternoDto;
 import ar.edu.uade.api.pagos.excepcion.ErrorCode;
 import ar.edu.uade.api.pagos.excepcion.PagoException;
@@ -30,11 +31,17 @@ public class PedidosClientSimulado implements PedidosClient {
     );
 
     @Override
-    public PedidoExternoDto buscarPedido(UUID codigoPedido) {
+    public PedidoExternoDto buscarPedido(UUID codigoPedido, UUID codigoUsuario) {
         if (PEDIDO_SIN_RESPUESTA.equals(codigoPedido)) {
             throw new PagoException(ErrorCode.EXTERNAL_SERVICE_UNAVAILABLE,
                     "El Servicio de Pedidos no respondio a tiempo");
         }
         return PEDIDOS.get(codigoPedido);
+    }
+
+    // Simulado: el aviso siempre "llega".
+    @Override
+    public boolean avisarResultadoPago(PagoResponse pago) {
+        return true;
     }
 }

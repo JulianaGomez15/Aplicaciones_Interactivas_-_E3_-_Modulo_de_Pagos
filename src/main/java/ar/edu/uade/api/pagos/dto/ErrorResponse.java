@@ -2,14 +2,14 @@ package ar.edu.uade.api.pagos.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 
 // DTO-10: formato normalizado de error del ecosistema.
 @Schema(description = "Error normalizado")
 public class ErrorResponse {
 
-    @Schema(description = "Fecha y hora del error (ISO-8601)")
-    private final OffsetDateTime timestamp;
+    @Schema(description = "Fecha y hora del error (ISO-8601, hora local sin zona, igual que las fechas de los pagos)")
+    private final LocalDateTime timestamp;
 
     @Schema(example = "409")
     private final int status;
@@ -26,7 +26,7 @@ public class ErrorResponse {
     @Schema(description = "Tomado del header X-Correlation-Id (o generado si no vino)")
     private final String correlationId;
 
-    public ErrorResponse(OffsetDateTime timestamp, int status, String code, String message, String path,
+    public ErrorResponse(LocalDateTime timestamp, int status, String code, String message, String path,
                          String correlationId) {
         this.timestamp = timestamp;
         this.status = status;
@@ -36,7 +36,7 @@ public class ErrorResponse {
         this.correlationId = correlationId;
     }
 
-    public OffsetDateTime getTimestamp() { return timestamp; }
+    public LocalDateTime getTimestamp() { return timestamp; }
     public int getStatus() { return status; }
     public String getCode() { return code; }
     public String getMessage() { return message; }

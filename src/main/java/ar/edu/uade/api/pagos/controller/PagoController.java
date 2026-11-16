@@ -11,18 +11,20 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
 // Sin reglas de negocio: valida superficialmente (@Valid), delega en los Services y traduce el resultado a HTTP.
 @RestController
-@RequestMapping("/api/v1/payments")
+@RequestMapping(value = "/api/v1/payments", produces = MediaType.APPLICATION_JSON_VALUE)
 public class PagoController implements IPagoController {
 
     private final PagoService pagoService;
@@ -37,8 +39,13 @@ public class PagoController implements IPagoController {
     @PostMapping
     public ResponseEntity<PagoResponse> iniciar(@Valid @RequestBody CrearPagoRequest dto) {
         ResultadoOperacion<PagoResponse> resultado = pagoService.iniciarPago(dto);
-        return ResponseEntity.status(resultado.isCreado() ? HttpStatus.CREATED : HttpStatus.OK)
-                .body(resultado.getCuerpo());
+        if (!resultado.isCreado()) {
+            return ResponseEntity.ok(resultado.getCuerpo());
+        }
+        // 201 con Location apuntando al pago creado (API-04).
+        URI ubicacion = ServletUriComponentsBuilder.fromCurrentRequestUri().path("/{codigoPago}")
+                .buildAndExpand(resultado.getCuerpo().getCodigoPago()).toUri();
+        return ResponseEntity.created(ubicacion).body(resultado.getCuerpo());
     }
 
     @Override
@@ -66,8 +73,13 @@ public class PagoController implements IPagoController {
     public ResponseEntity<ReembolsoResponse> reembolsar(@PathVariable UUID codigoPago,
                                                         @Valid @RequestBody ReembolsoRequest dto) {
         ResultadoOperacion<ReembolsoResponse> resultado = reembolsoService.reembolsarPago(codigoPago, dto);
-        return ResponseEntity.status(resultado.isCreado() ? HttpStatus.CREATED : HttpStatus.OK)
-                .body(resultado.getCuerpo());
+        if (!resultado.isCreado()) {
+            return ResponseEntity.ok(resultado.getCuerpo());
+        }
+        // No hay un GET de reembolsos: Location apunta al pago, donde se ve el efecto del reembolso.
+        URI ubicacion = ServletUriComponentsBuilder.fromCurrentContextPath().path("/api/v1/payments/{codigoPago}")
+                .buildAndExpand(codigoPago).toUri();
+        return ResponseEntity.created(ubicacion).body(resultado.getCuerpo());
     }
 
     @Override

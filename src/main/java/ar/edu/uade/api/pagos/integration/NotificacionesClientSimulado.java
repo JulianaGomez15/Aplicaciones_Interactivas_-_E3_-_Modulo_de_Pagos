@@ -16,18 +16,18 @@ public class NotificacionesClientSimulado implements NotificacionesClient {
 
     @Override
     public void enviarComprobantePago(PagoResponse pago) {
-        log.info("[Notificaciones] comprobante del pago {} por {} {}",
+        log.debug("[Notificaciones] comprobante del pago {} por {} {}",
                 pago.getCodigoPago(), pago.getMonto(), pago.getMoneda());
     }
 
     @Override
     public void enviarAvisoRechazo(PagoResponse pago, String motivo) {
-        log.info("[Notificaciones] aviso de rechazo del pago {}: {}", pago.getCodigoPago(), motivo);
+        log.debug("[Notificaciones] aviso de rechazo del pago {}: {}", pago.getCodigoPago(), motivo);
     }
 
     @Override
     public void enviarComprobanteReembolso(PagoResponse pago, ReembolsoResponse reembolso) {
-        log.info("[Notificaciones] comprobante del reembolso {} ({}) del pago {}",
+        log.debug("[Notificaciones] comprobante del reembolso {} ({}) del pago {}",
                 reembolso.getCodigoReembolso(), reembolso.getMonto(), pago.getCodigoPago());
     }
 }

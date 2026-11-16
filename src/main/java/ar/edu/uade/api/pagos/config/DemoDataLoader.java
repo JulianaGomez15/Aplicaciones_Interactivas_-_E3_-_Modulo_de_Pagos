@@ -1,5 +1,6 @@
 package ar.edu.uade.api.pagos.config;
 
+import ar.edu.uade.api.pagos.consola.Consola;
 import ar.edu.uade.api.pagos.dto.*;
 import ar.edu.uade.api.pagos.excepcion.PagoException;
 import ar.edu.uade.api.pagos.integration.PedidosClientSimulado;
@@ -22,17 +23,19 @@ public class DemoDataLoader {
 
     @Bean
     CommandLineRunner demo(MedioPagoService medioPagoService, PagoService pagoService,
-                           ReembolsoService reembolsoService) {
+                           ReembolsoService reembolsoService, Consola consola) {
 
-        return args -> {
+        // La carga de demo no imprime los bloques del flujo: la consola queda limpia para los pagos reales.
+        return args -> consola.enSilencio(() -> {
 
             MedioPagoResponse tarjetaAna = medioPagoService.registrarMedioPago(UsuariosClientSimulado.USUARIO_ANA,
                     new MedioPagoRequest("TARJETA_CREDITO", "4111 1111 1111 1234"));
-            MedioPagoResponse billeteraBruno = medioPagoService.registrarMedioPago(
-                    UsuariosClientSimulado.USUARIO_BRUNO, new MedioPagoRequest("BILLETERA_VIRTUAL", "bruno.diaz@billetera"));
+            MedioPagoResponse billeteraAna = medioPagoService.registrarMedioPago(
+                    UsuariosClientSimulado.USUARIO_ANA, new MedioPagoRequest("BILLETERA_VIRTUAL", "ana.perez@billetera"));
 
+            // Los pagos de demo se crean PENDIENTE y se resuelven a mano: resultado fijo, sin sorteo.
             // Pedido 1: pago aprobado y reembolsado parcialmente.
-            PagoResponse aprobado = pagoService.iniciarPago(new CrearPagoRequest(
+            PagoResponse aprobado = pagoService.iniciarPagoPendiente(new CrearPagoRequest(
                     PedidosClientSimulado.PEDIDO_1, UsuariosClientSimulado.USUARIO_ANA, tarjetaAna.getCodigoMedioPago(),
                     new BigDecimal("15000.00"), "ARS", "demo-clave-001")).getCuerpo();
             pagoService.aprobarPago(aprobado.getCodigoPago());
@@ -40,9 +43,9 @@ public class DemoDataLoader {
                     new ReembolsoRequest(new BigDecimal("5000.00"), "Producto faltante", "demo-reembolso-001"));
 
             // Pedido 2: pago rechazado (puede reintentarse con una clave nueva).
-            PagoResponse rechazado = pagoService.iniciarPago(new CrearPagoRequest(
-                    PedidosClientSimulado.PEDIDO_2, UsuariosClientSimulado.USUARIO_BRUNO,
-                    billeteraBruno.getCodigoMedioPago(), new BigDecimal("8500.50"), "ARS", "demo-clave-002"))
+            PagoResponse rechazado = pagoService.iniciarPagoPendiente(new CrearPagoRequest(
+                    PedidosClientSimulado.PEDIDO_2, UsuariosClientSimulado.USUARIO_ANA,
+                    billeteraAna.getCodigoMedioPago(), new BigDecimal("8500.50"), "ARS", "demo-clave-002"))
                     .getCuerpo();
             pagoService.rechazarPago(rechazado.getCodigoPago(), new RechazarPagoRequest("Fondos insuficientes"));
 
@@ -71,13 +74,15 @@ public class DemoDataLoader {
                     tarjetaAna.getCodigoMedioPago(), new BigDecimal("15000.00"), "ARS", "demo-clave-001"))
                     .getCuerpo().getCodigoPago());
 
-            System.out.println("\nMedios de pago de demo (para usar en POST /api/v1/payments):");
-            System.out.println("  Ana   (00000000-0000-0000-0000-000000000001): " + tarjetaAna.getCodigoMedioPago());
-            System.out.println("  Bruno (00000000-0000-0000-0000-000000000002): " + billeteraBruno.getCodigoMedioPago());
+            System.out.println("\nUsuario de demo: demo / demo123 (Ana, 00000000-0000-0000-0000-000000000001)");
+            System.out.println("Sus medios de pago (para usar en POST /api/v1/payments):");
+            System.out.println("  Tarjeta de credito: " + tarjetaAna.getCodigoMedioPago());
+            System.out.println("  Billetera virtual:  " + billeteraAna.getCodigoMedioPago());
 
             System.out.println("\nSwagger UI: http://localhost:8089/swagger-ui.html");
             System.out.println("H2 console: http://localhost:8089/h2-console (jdbc:h2:mem:pagos, user sa)");
-        };
+            return null;
+        });
     }
 
     private void intentar(String descripcion, Supplier<?> operacion) {

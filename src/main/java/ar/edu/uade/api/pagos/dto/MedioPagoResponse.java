@@ -10,7 +10,8 @@ public class MedioPagoResponse {
 
     private final UUID codigoMedioPago;
 
-    @Schema(example = "TARJETA_CREDITO")
+    @Schema(example = "TARJETA_CREDITO",
+            allowableValues = {"TARJETA_CREDITO", "TARJETA_DEBITO", "BILLETERA_VIRTUAL", "TRANSFERENCIA"})
     private final String tipo;
 
     @Schema(example = "**** **** **** 1234")

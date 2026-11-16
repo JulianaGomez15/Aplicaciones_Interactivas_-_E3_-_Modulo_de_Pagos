@@ -2,7 +2,7 @@
   "openapi" : "3.1.0",
   "info" : {
     "title" : "DeliveryGo - Modulo de Pagos",
-    "description" : "API REST del **Modulo de Pagos** (Grupo 3, Aplicaciones Interactivas). Registra intentos de pago de pedidos, los autoriza o rechaza de forma **simulada**, gestiona reembolsos totales o parciales y guarda el historial de estados. No procesa dinero real ni guarda datos reales de tarjetas.\n\n**Autenticacion:** JWT en `Authorization: Bearer <token>`. En el ecosistema lo emite el Servicio de Usuarios; aca `POST /auth/login` lo simula con cuentas de demo. Roles: ADMINISTRADOR, ANALISTA, CLIENTE, SERVICIO_ESCRITURA y SERVICIO_LECTURA (JWT de servicio entre APIs).\n\n**Trazabilidad:** las operaciones API-01 a API-08 siguen el documento de la Entrega 1; API-09 agrega la baja de medios de pago.\n\n**Errores:** todos usan el formato `ErrorResponse` (`timestamp`, `status`, `code`, `message`, `path`, `correlationId`). El `correlationId` se toma del header `X-Correlation-Id`.\n\n**Datos simulados** de otros modulos: pedidos BORRADOR `00000000-0000-0000-0001-00000000000{1,2,3}` (totales 15000.00, 8500.50 y 32000.00), usuarios `00000000-0000-0000-0000-00000000000{1,2}`.",
+    "description" : "API REST del **Modulo de Pagos** (Grupo 3, Aplicaciones Interactivas). Registra intentos de pago de pedidos, los autoriza o rechaza de forma **simulada**, gestiona reembolsos totales o parciales y guarda el historial de estados. No procesa dinero real ni guarda datos reales de tarjetas.\n\n**Autenticacion:** JWT en `Authorization: Bearer <token>`. En el ecosistema lo emite el Servicio de Usuarios; aca `POST /auth/login` lo simula con un unico usuario de demo (`demo` / `demo123`, usuario Ana, con todos los roles). Roles: ADMINISTRADOR, ANALISTA, CLIENTE, SERVICIO_ESCRITURA y SERVICIO_LECTURA (JWT de servicio entre APIs).\n\n**Trazabilidad:** las operaciones API-01 a API-08 siguen el documento de la Entrega 1; API-09 agrega la baja de medios de pago.\n\n**Errores:** todos usan el formato `ErrorResponse` (`timestamp`, `status`, `code`, `message`, `path`, `correlationId`). El `correlationId` se toma del header `X-Correlation-Id`.\n\n**Datos simulados** de otros modulos: pedidos BORRADOR `00000000-0000-0000-0001-00000000000{1,2,3}` (totales 15000.00, 8500.50 y 32000.00), usuario `00000000-0000-0000-0000-000000000001` (Ana).",
     "version" : "1.0"
   },
   "servers" : [ {
@@ -14,7 +14,7 @@
     "description" : "Iniciar, autorizar, rechazar, consultar, listar y reembolsar pagos simulados"
   }, {
     "name" : "Auth (solo demo)",
-    "description" : "Simula al Servicio de Usuarios, que en el ecosistema es el unico emisor de JWT. Cuentas: admin/admin123, analista/analista123, cliente/cliente123 (Ana), cliente2/cliente123 (Bruno), api-pedidos/pedidos123 (escritura y lectura), api-analitica/analitica123 (lectura)."
+    "description" : "Simula al Servicio de Usuarios, que en el ecosistema es el unico emisor de JWT. Unica cuenta: demo / demo123 (usuario Ana, con todos los roles)."
   }, {
     "name" : "Medios de pago",
     "description" : "Medios de pago simulados: solo se guarda un detalle enmascarado"
@@ -40,7 +40,7 @@
           "200" : {
             "description" : "JWT emitido",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/TokenDto"
                 }
@@ -69,10 +69,11 @@
         "parameters" : [ {
           "name" : "estado",
           "in" : "query",
-          "description" : "PENDIENTE, APROBADO, RECHAZADO o REEMBOLSADO",
+          "description" : "Estado del pago",
           "required" : false,
           "schema" : {
-            "type" : "string"
+            "type" : "string",
+            "enum" : [ "PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO" ]
           }
         }, {
           "name" : "codigoUsuario",
@@ -149,7 +150,7 @@
           "200" : {
             "description" : "Pagina de resultados",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PaginaPagosResponse"
                 }
@@ -194,7 +195,7 @@
       "post" : {
         "tags" : [ "Pagos" ],
         "summary" : "Iniciar pago (CU-01 / CU-09)",
-        "description" : "Registra un intento de pago PENDIENTE para un pedido pendiente de pago (BORRADOR).\n\n**Idempotencia (RN-01):** si la `claveControl` ya existe con los mismos datos (pedido, usuario, monto y medio de pago) responde **200** con el pago original sin crear otro; con datos distintos responde **409 DUPLICATE_PAYMENT_REQUEST**. Un pago RECHAZADO no se reintenta con la misma clave: hace falta una nueva.\n\n**Valida contra otros modulos:** usuario activo (INT-02), medio de pago activo y propio, pedido pendiente de pago y monto igual al total (INT-01). Si Pedidos o Usuarios no responden: 503 y no se crea el pago.\n\n**Rol:** SERVICIO_ESCRITURA (JWT de servicio de Pedidos).",
+        "description" : "Registra un intento de pago para un pedido pendiente de pago (BORRADOR) y lo resuelve en el momento con la **autorizacion simulada** (sorteo): 70 % APROBADO, 10 % RECHAZADO por fondos insuficientes, 10 % NO_AUTORIZADO (el banco no autorizo) y 10 % ERROR (intente de nuevo, con otra clave de control). El `estado` y el `motivo` vuelven en la respuesta. Con `autorizacion.automatica=false` el pago queda PENDIENTE hasta approve / reject.\n\n**Idempotencia (RN-01):** si la `claveControl` ya existe con los mismos datos (pedido, usuario, monto y medio de pago) responde **200** con el pago original sin crear otro; con datos distintos responde **409 DUPLICATE_PAYMENT_REQUEST**. Un pago RECHAZADO no se reintenta con la misma clave: hace falta una nueva.\n\n**Valida contra otros modulos:** usuario activo (INT-02), medio de pago activo y propio, pedido pendiente de pago y monto igual al total (INT-01). Si Pedidos o Usuarios no responden: 503 y no se crea el pago.\n\n**Rol:** SERVICIO_ESCRITURA (JWT de servicio de Pedidos).",
         "operationId" : "API-01_iniciarPago",
         "requestBody" : {
           "content" : {
@@ -208,9 +209,9 @@
         },
         "responses" : {
           "201" : {
-            "description" : "Pago creado en estado PENDIENTE",
+            "description" : "Pago creado; `estado` informa el resultado de la autorizacion simulada",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PagoResponse"
                 }
@@ -220,7 +221,7 @@
           "200" : {
             "description" : "La clave de control ya se uso con los mismos datos: se devuelve el pago existente",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PagoResponse"
                 }
@@ -228,7 +229,7 @@
             }
           },
           "400" : {
-            "description" : "VALIDATION_ERROR (campos faltantes o con formato invalido) o PAYMENT_METHOD_INVALID (medio inexistente, inactivo o de otro usuario)",
+            "description" : "VALIDATION_ERROR (campos faltantes o con formato invalido)",
             "content" : {
               "application/json" : {
                 "schema" : {
@@ -268,7 +269,7 @@
             }
           },
           "422" : {
-            "description" : "PAYMENT_AMOUNT_MISMATCH, PAYMENT_USER_INVALID u ORDER_NOT_PAYABLE",
+            "description" : "PAYMENT_AMOUNT_MISMATCH, PAYMENT_USER_INVALID, ORDER_NOT_PAYABLE o PAYMENT_METHOD_INVALID (medio inexistente, inactivo o de otro usuario)",
             "content" : {
               "application/json" : {
                 "schema" : {
@@ -279,98 +280,6 @@
           },
           "503" : {
             "description" : "EXTERNAL_SERVICE_UNAVAILABLE: Pedidos o Usuarios no respondieron; no se crea el pago",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "bearerAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/payments/{codigoPago}/reject" : {
-      "patch" : {
-        "tags" : [ "Pagos" ],
-        "summary" : "Rechazar pago (CU-03)",
-        "description" : "Rechazo simulado: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.\n\n**Rol:** SERVICIO_ESCRITURA.",
-        "operationId" : "API-03_rechazarPago",
-        "parameters" : [ {
-          "name" : "codigoPago",
-          "in" : "path",
-          "description" : "Codigo publico del pago",
-          "required" : true,
-          "schema" : {
-            "type" : "string",
-            "format" : "uuid"
-          }
-        } ],
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/RechazarPagoRequest"
-              }
-            }
-          }
-        },
-        "responses" : {
-          "200" : {
-            "description" : "Pago RECHAZADO (tambien si ya lo estaba)",
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/PagoResponse"
-                }
-              }
-            }
-          },
-          "400" : {
-            "description" : "VALIDATION_ERROR (motivo demasiado largo)",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401" : {
-            "description" : "UNAUTHORIZED",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403" : {
-            "description" : "FORBIDDEN",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404" : {
-            "description" : "PAYMENT_NOT_FOUND",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409" : {
-            "description" : "PAYMENT_INVALID_STATE: el pago esta APROBADO o REEMBOLSADO",
             "content" : {
               "application/json" : {
                 "schema" : {
@@ -415,7 +324,7 @@
           "201" : {
             "description" : "Reembolso registrado",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/ReembolsoResponse"
                 }
@@ -425,7 +334,7 @@
           "200" : {
             "description" : "La clave de control del reembolso ya se uso: se devuelve el reembolso existente",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/ReembolsoResponse"
                 }
@@ -498,11 +407,176 @@
         } ]
       }
     },
+    "/api/v1/payment-methods" : {
+      "post" : {
+        "tags" : [ "Medios de pago" ],
+        "summary" : "Registrar medio de pago (CU-08)",
+        "description" : "Registra un medio de pago simulado para el **usuario del JWT** (el cuerpo no lleva codigo de usuario). Se guardan solo los ultimos 4 digitos (RN-08); el numero completo se descarta.\n\nTipos: TARJETA_CREDITO, TARJETA_DEBITO (13 a 19 digitos), BILLETERA_VIRTUAL, TRANSFERENCIA.\n\n**Rol:** CLIENTE.",
+        "operationId" : "API-07_registrarMedioPago",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/MedioPagoRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Medio de pago creado y activo",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MedioPagoResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "VALIDATION_ERROR (faltan campos)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "PAYMENT_METHOD_INVALID (tipo no soportado o numero invalido)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "UNAUTHORIZED",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "FORBIDDEN: el rol no es CLIENTE",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ]
+      }
+    },
+    "/api/v1/payments/{codigoPago}/reject" : {
+      "patch" : {
+        "tags" : [ "Pagos" ],
+        "summary" : "Rechazar pago - modo manual (CU-03)",
+        "description" : "**Solo para el modo manual** (`autorizacion.automatica=false`). Por defecto el pago ya sale resuelto de `POST /api/v1/payments` (sorteo) y **Pedidos no necesita llamar a esta operacion**: sobre un pago ya resuelto solo responde 200 (si ya esta RECHAZADO) o 409.\n\nRechazo manual: PENDIENTE -> RECHAZADO, con el motivo en el historial. Pide el aviso de rechazo a Notificaciones. El pedido no avanza (RN-03). Rechazar un pago ya RECHAZADO devuelve 200 sin cambios (RN-10); si esta APROBADO o REEMBOLSADO, 409. Para reintentar hay que crear un pago nuevo con otra clave de control.\n\n**Rol:** SERVICIO_ESCRITURA.",
+        "operationId" : "API-03_rechazarPago",
+        "parameters" : [ {
+          "name" : "codigoPago",
+          "in" : "path",
+          "description" : "Codigo publico del pago",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RechazarPagoRequest"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Pago RECHAZADO (tambien si ya lo estaba)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagoResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "VALIDATION_ERROR (motivo demasiado largo)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "UNAUTHORIZED",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "FORBIDDEN",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "PAYMENT_NOT_FOUND",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "PAYMENT_INVALID_STATE: el pago esta APROBADO o REEMBOLSADO",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ]
+      }
+    },
     "/api/v1/payments/{codigoPago}/approve" : {
       "patch" : {
         "tags" : [ "Pagos" ],
-        "summary" : "Autorizar pago (CU-02)",
-        "description" : "Autorizacion simulada: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).\n\nCon la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 sin cambios (RN-10); si esta RECHAZADO o REEMBOLSADO, 409.\n\n**Rol:** SERVICIO_ESCRITURA.",
+        "summary" : "Autorizar pago - modo manual (CU-02)",
+        "description" : "**Solo para el modo manual** (`autorizacion.automatica=false`). Por defecto el pago ya sale resuelto de `POST /api/v1/payments` (sorteo) y **Pedidos no necesita llamar a esta operacion**: sobre un pago ya resuelto solo responde 200 (si ya esta APROBADO) o 409.\n\nAutorizacion manual: PENDIENTE -> APROBADO. Registra el cambio en el historial y pide el comprobante a Notificaciones (si Notificaciones falla, el pago queda aprobado igual).\n\nCon la respuesta, Pedidos confirma el pedido (RN-03). Aprobar un pago ya APROBADO devuelve 200 sin cambios (RN-10); si ya esta en otro estado final, 409.\n\n**Rol:** SERVICIO_ESCRITURA.",
         "operationId" : "API-02_aprobarPago",
         "parameters" : [ {
           "name" : "codigoPago",
@@ -518,7 +592,7 @@
           "200" : {
             "description" : "Pago APROBADO (tambien si ya lo estaba)",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PagoResponse"
                 }
@@ -571,125 +645,6 @@
         } ]
       }
     },
-    "/api/v1/payment-methods" : {
-      "post" : {
-        "tags" : [ "Medios de pago" ],
-        "summary" : "Registrar medio de pago (CU-08)",
-        "description" : "Registra un medio de pago simulado para el **usuario del JWT** (el cuerpo no lleva codigo de usuario). Se guardan solo los ultimos 4 digitos (RN-08); el numero completo se descarta.\n\nTipos: TARJETA_CREDITO, TARJETA_DEBITO (13 a 19 digitos), BILLETERA_VIRTUAL, TRANSFERENCIA.\n\n**Rol:** CLIENTE.",
-        "operationId" : "API-07_registrarMedioPago",
-        "requestBody" : {
-          "content" : {
-            "application/json" : {
-              "schema" : {
-                "$ref" : "#/components/schemas/MedioPagoRequest"
-              }
-            }
-          },
-          "required" : true
-        },
-        "responses" : {
-          "201" : {
-            "description" : "Medio de pago creado y activo",
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/MedioPagoResponse"
-                }
-              }
-            }
-          },
-          "400" : {
-            "description" : "PAYMENT_METHOD_INVALID (tipo no soportado o numero invalido) o VALIDATION_ERROR",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401" : {
-            "description" : "UNAUTHORIZED",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403" : {
-            "description" : "FORBIDDEN: el rol no es CLIENTE",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "bearerAuth" : [ ]
-        } ]
-      }
-    },
-    "/api/v1/payment-methods/{codigoMedioPago}" : {
-      "delete" : {
-        "tags" : [ "Medios de pago" ],
-        "summary" : "Eliminar medio de pago",
-        "description" : "Desactiva un medio de pago del usuario del JWT sin borrar los pagos historicos. Repetir la solicitud devuelve 204. **Rol:** CLIENTE.",
-        "operationId" : "API-09_eliminarMedioPago",
-        "parameters" : [ {
-          "name" : "codigoMedioPago",
-          "in" : "path",
-          "description" : "Codigo publico del medio de pago",
-          "required" : true,
-          "schema" : {
-            "type" : "string",
-            "format" : "uuid"
-          }
-        } ],
-        "responses" : {
-          "204" : {
-            "description" : "Medio de pago desactivado; sin cuerpo"
-          },
-          "401" : {
-            "description" : "UNAUTHORIZED",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403" : {
-            "description" : "FORBIDDEN: el medio pertenece a otro usuario",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404" : {
-            "description" : "NOT_FOUND: no existe el medio de pago",
-            "content" : {
-              "application/json" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security" : [ {
-          "bearerAuth" : [ ]
-        } ]
-      }
-    },
     "/api/v1/payments/{codigoPago}" : {
       "get" : {
         "tags" : [ "Pagos" ],
@@ -710,7 +665,7 @@
           "200" : {
             "description" : "Pago",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "$ref" : "#/components/schemas/PagoResponse"
                 }
@@ -773,7 +728,7 @@
           "200" : {
             "description" : "Historial del pago",
             "content" : {
-              "*/*" : {
+              "application/json" : {
                 "schema" : {
                   "type" : "array",
                   "items" : {
@@ -818,6 +773,62 @@
           "bearerAuth" : [ ]
         } ]
       }
+    },
+    "/api/v1/payment-methods/{codigoMedioPago}" : {
+      "delete" : {
+        "tags" : [ "Medios de pago" ],
+        "summary" : "Eliminar medio de pago",
+        "description" : "Desactiva un medio de pago del usuario del JWT sin borrar los pagos historicos. Repetir la solicitud devuelve 204. **Rol:** CLIENTE.",
+        "operationId" : "API-09_eliminarMedioPago",
+        "parameters" : [ {
+          "name" : "codigoMedioPago",
+          "in" : "path",
+          "description" : "Codigo publico del medio de pago",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Medio de pago desactivado; sin cuerpo"
+          },
+          "401" : {
+            "description" : "UNAUTHORIZED",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403" : {
+            "description" : "FORBIDDEN: el medio pertenece a otro usuario",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "PAYMENT_METHOD_NOT_FOUND: no existe el medio de pago",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ {
+          "bearerAuth" : [ ]
+        } ]
+      }
     }
   },
   "components" : {
@@ -828,7 +839,7 @@
           "timestamp" : {
             "type" : "string",
             "format" : "date-time",
-            "description" : "Fecha y hora del error (ISO-8601)"
+            "description" : "Fecha y hora del error (ISO-8601, hora local sin zona, igual que las fechas de los pagos)"
           },
           "status" : {
             "type" : "integer",
@@ -860,11 +871,11 @@
         "properties" : {
           "username" : {
             "type" : "string",
-            "example" : "api-pedidos"
+            "example" : "demo"
           },
           "password" : {
             "type" : "string",
-            "example" : "pedidos123"
+            "example" : "demo123"
           }
         }
       },
@@ -898,6 +909,7 @@
         "properties" : {
           "tipo" : {
             "type" : "string",
+            "enum" : [ "TARJETA_CREDITO", "TARJETA_DEBITO", "BILLETERA_VIRTUAL", "TRANSFERENCIA" ],
             "example" : "TARJETA_CREDITO"
           },
           "detalleEnmascarado" : {
@@ -921,8 +933,13 @@
           },
           "estado" : {
             "type" : "string",
-            "enum" : [ "PENDIENTE", "APROBADO", "RECHAZADO", "REEMBOLSADO" ],
+            "enum" : [ "PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO" ],
             "example" : "PENDIENTE"
+          },
+          "motivo" : {
+            "type" : [ "string", "null" ],
+            "description" : "Motivo del estado cuando el pago no se aprobo (fondos insuficientes, el banco no autorizo, error: intente de nuevo). Null si esta PENDIENTE o APROBADO",
+            "example" : "Fondos insuficientes"
           },
           "monto" : {
             "type" : "number",
@@ -988,19 +1005,6 @@
           }
         },
         "required" : [ "claveControl", "codigoMedioPago", "codigoPedido", "codigoUsuario", "moneda", "monto" ]
-      },
-      "RechazarPagoRequest" : {
-        "type" : "object",
-        "description" : "Motivo del rechazo simulado",
-        "properties" : {
-          "motivo" : {
-            "type" : "string",
-            "description" : "Motivo del rechazo (opcional; por defecto 'Rechazo simulado')",
-            "example" : "Fondos insuficientes",
-            "maxLength" : 255,
-            "minLength" : 0
-          }
-        }
       },
       "ReembolsoResponse" : {
         "type" : "object",
@@ -1074,6 +1078,7 @@
           },
           "tipo" : {
             "type" : "string",
+            "enum" : [ "TARJETA_CREDITO", "TARJETA_DEBITO", "BILLETERA_VIRTUAL", "TRANSFERENCIA" ],
             "example" : "TARJETA_CREDITO"
           },
           "detalleEnmascarado" : {
@@ -1104,6 +1109,19 @@
           }
         },
         "required" : [ "numero", "tipo" ]
+      },
+      "RechazarPagoRequest" : {
+        "type" : "object",
+        "description" : "Motivo del rechazo simulado",
+        "properties" : {
+          "motivo" : {
+            "type" : "string",
+            "description" : "Motivo del rechazo (opcional; por defecto 'Rechazo simulado')",
+            "example" : "Fondos insuficientes",
+            "maxLength" : 255,
+            "minLength" : 0
+          }
+        }
       },
       "PaginaPagosResponse" : {
         "type" : "object",
@@ -1143,10 +1161,12 @@
           "estadoAnterior" : {
             "type" : [ "string", "null" ],
             "description" : "Null en el alta del pago",
+            "enum" : [ "PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO" ],
             "example" : "PENDIENTE"
           },
           "estadoNuevo" : {
             "type" : "string",
+            "enum" : [ "PENDIENTE", "APROBADO", "RECHAZADO", "NO_AUTORIZADO", "ERROR", "REEMBOLSADO" ],
             "example" : "APROBADO"
           },
           "motivo" : {
