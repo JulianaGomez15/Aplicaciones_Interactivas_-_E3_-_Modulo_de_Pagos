@@ -1,0 +1,149 @@
+<section class="primera">
+<h1>Introducción y contexto del módulo</h1>
+<p>DeliveryGo es una plataforma argentina ficticia de pedidos y entregas a domicilio que está dejando de ser una
+aplicación monolítica para convertirse en un ecosistema de servicios independientes, integrados entre sí
+mediante APIs REST. El Grupo 3 quedó a cargo del Módulo de Pagos. Nuestra función dentro del ecosistema es
+registrar los intentos de pago asociados a los pedidos, autorizarlos o rechazarlos de forma simulada y
+gestionar devoluciones simuladas, sin procesar dinero real ni conectarnos a ninguna pasarela bancaria real.</p>
+<p>Este documento parte de la Entrega 1 corregida del TPO DeliveryGo y la actualiza al estado actual de la
+implementación. Presentamos el alcance, los actores, las reglas de negocio, los casos de uso, los diagramas de
+secuencia, la arquitectura C4, la seguridad, el diagrama de clases en UML, el Diagrama Entidad Relación con su
+especificación JPA, los repositorios, los catálogos de servicios, APIs, DTOs e integraciones, la matriz maestra de
+trazabilidad, el manejo de errores, las decisiones técnicas y el backlog.</p>
+
+<h2>Cambios de esta versión</h2>
+<p>Resumen de lo que cambió respecto de la Entrega 1 corregida, a partir de la implementación y de lo acordado
+para la integración con los otros módulos.</p>
+<table class="cat negrita1">
+<thead><tr><th style="width:21%">Tema</th><th>Cambio aplicado</th></tr></thead>
+<tbody>
+<tr><td>Autorización simulada</td><td>El pago se resuelve al iniciarlo, con un sorteo: 70 % aprobado, 10 % rechazado
+por fondos insuficientes, 10 % no autorizado por el banco y 10 % error (RN-11, SRV-10). Aprobar y rechazar a mano
+(CU-02 y CU-03) quedan solo para el modo manual.</td></tr>
+<tr><td>Estados del pago</td><td>Se agregaron NO_AUTORIZADO y ERROR. El pago guarda el motivo del estado y lo
+devuelve en DTO-02 (campo motivo). Se actualizaron RN-04, RN-05, el diagrama de estados, el UML y el DER.</td></tr>
+<tr><td>Aviso a Pedidos</td><td>Cuando el pago queda resuelto, Pagos le avisa el resultado a Pedidos (INT-04) y
+notifica al usuario (INT-03). Las dos llamadas se hacen después del commit.</td></tr>
+<tr><td>Operaciones</td><td>Aprobar y rechazar pasaron de POST a PATCH. Se agregó la baja de medio de pago
+(CU-11, SRV-09, API-09).</td></tr>
+<tr><td>Códigos de error</td><td>PAYMENT_METHOD_INVALID pasó de 400 a 422. Se agregaron
+PAYMENT_METHOD_NOT_FOUND (404) y los técnicos NOT_FOUND (404), METHOD_NOT_ALLOWED (405),
+NOT_ACCEPTABLE (406) y UNSUPPORTED_MEDIA_TYPE (415).</td></tr>
+<tr><td>Respuestas HTTP</td><td>Los 201 llevan el header Location, los 401 llevan WWW-Authenticate: Bearer y los
+405 llevan Allow. El timestamp de los errores va sin zona horaria, igual que las fechas de los pagos.</td></tr>
+<tr><td>Integraciones</td><td>La consulta a Pedidos envía el header X-Cliente-Id y lee el campo id. La consulta a
+Usuarios acepta estado ACTIVO. Los clientes REST registran en el log la causa de cada fallo.</td></tr>
+<tr><td>Transacciones</td><td>Las consultas a Usuarios y Pedidos se hacen antes de abrir la transacción; el aviso a
+Pedidos y la notificación, después del commit (DEC-10).</td></tr>
+<tr><td>Persistencia</td><td>Se usa H2 en memoria en lugar de PostgreSQL (DEC-11). Se agregó la columna
+motivo_estado a pago.</td></tr>
+<tr><td>Demo y consola</td><td>Hay un solo usuario de demo para todas las transacciones (DEC-12) y cada operación
+imprime en la consola un bloque con los pasos del flujo (DEC-13).</td></tr>
+</tbody>
+</table>
+
+<h2>Objetivo del módulo</h2>
+<p>Que un pedido pendiente de pago pueda pagarse: registrar el intento de pago, autorizarlo o rechazarlo, evitar
+que un mismo pago se duplique si la solicitud llega dos veces, permitir consultar en qué estado está y poder
+reembolsarlo cuando corresponda. Además, devolverle a Pedidos el resultado de cada operación, avisarle cuando
+el pago queda resuelto y pedirle al Servicio de Notificaciones los comprobantes y avisos.</p>
+</section>
+
+<section>
+<h1>Alcance y actores</h1>
+<h2>Alcance</h2>
+<p>El módulo de Pagos se encarga de lo siguiente:</p>
+<ul>
+<li>Recibir la solicitud de pago que envía el Servicio de Pedidos, con el monto, el medio de pago elegido por el
+cliente y una clave de control.</li>
+<li>Verificar que el importe coincida con el total informado por Pedidos y evitar que una misma solicitud genere
+dos pagos.</li>
+<li>Simular la autorización del pago con un sorteo de cuatro resultados posibles, ya que no hay conexión a
+ninguna pasarela bancaria real.</li>
+<li>Guardar un historial de los cambios de estado de cada pago, para poder reconstruir qué pasó.</li>
+<li>Gestionar reembolsos totales o parciales sobre pagos que ya fueron aprobados.</li>
+<li>Exponer una API REST protegida con JWT y documentada con OpenAPI y Swagger para que el Portal Web y los
+demás módulos puedan consumirla.</li>
+<li>Avisarle a Pedidos el resultado del pago y pedirle al Servicio de Notificaciones el envío de comprobantes y
+avisos cuando ocurre algo relevante, como una aprobación, un rechazo o un reembolso.</li>
+</ul>
+<h2>Fuera de alcance</h2>
+<ul>
+<li>Procesar dinero real o integrarse con pasarelas de pago reales, como Mercado Pago o tarjetas verdaderas.</li>
+<li>Guardar datos sensibles reales de tarjetas. Solo se almacenan datos simulados y enmascarados.</li>
+<li>Conciliación bancaria o facturación electrónica.</li>
+</ul>
+<h2>Actores</h2>
+<table class="cat negrita1">
+<thead><tr><th style="width:27%">Actor</th><th>Rol frente al módulo de Pagos</th></tr></thead>
+<tbody>
+<tr><td style="white-space:normal">Cliente (a través del Portal Web)</td><td>Origina de forma indirecta la solicitud
+de pago al confirmar su compra, registra y da de baja sus medios de pago y consulta el estado de sus pagos.</td></tr>
+<tr><td>Servicio de Pedidos</td><td>Crea el pago y recibe el resultado de la autorización en la respuesta y en el
+aviso de Pagos. Pide un reembolso si el pedido se cancela.</td></tr>
+<tr><td style="white-space:normal">Servicio de Usuarios y Autenticación</td><td>Es el único emisor del JWT que Pagos
+valida localmente. Además permite consultar si un usuario existe y está activo, por su código de usuario.</td></tr>
+<tr><td>Servicio de Notificaciones</td><td>Recibe los pedidos de envío de comprobantes y avisos de pago no aprobado
+o de reembolso.</td></tr>
+<tr><td>Administrador</td><td>Consulta pagos, reembolsos e historial con fines de auditoría o para resolver
+incidencias.</td></tr>
+<tr><td>Analista</td><td>Consume información agregada de pagos para las métricas del negocio, a través del módulo
+de Analítica.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h1>Reglas de negocio</h1>
+<p>Estas son las reglas que definimos para el módulo. RN-01, RN-02 y RN-03 son las que pide la consigna del TPO
+de forma explícita; el resto las agregamos para cubrir el ciclo completo del pago.</p>
+<dl class="rn">
+<div><dt>RN-01</dt><dd>Si llega dos veces una solicitud de pago con la misma clave de control y los mismos datos, no
+se crea un segundo pago ni se vuelve a sortear: se devuelve el que ya existe. Si la clave ya se usó con datos
+distintos, la solicitud se rechaza con 409 DUPLICATE_PAYMENT_REQUEST.</dd></div>
+<div><dt>RN-02</dt><dd>El importe del pago tiene que coincidir exactamente con el total que informa el Servicio de
+Pedidos.</dd></div>
+<div><dt>RN-03</dt><dd>Solo un pago en estado APROBADO permite que el pedido pase a la siguiente etapa.</dd></div>
+<div><dt>RN-04</dt><dd>Las transiciones de estado válidas son PENDIENTE a APROBADO, PENDIENTE a RECHAZADO,
+PENDIENTE a NO_AUTORIZADO, PENDIENTE a ERROR y APROBADO a REEMBOLSADO. Cualquier otro cambio de estado se
+considera inválido.</dd></div>
+<div><dt>RN-05</dt><dd>Un pago RECHAZADO, NO_AUTORIZADO o en ERROR no puede reintentarse con la misma clave de
+control. Para reintentar hace falta una clave nueva que haga referencia al mismo pedido, por lo que un pedido
+puede tener varios intentos de pago.</dd></div>
+<div><dt>RN-06</dt><dd>Un reembolso solo puede pedirse sobre un pago que esté en estado APROBADO.</dd></div>
+<div><dt>RN-07</dt><dd>La suma de los reembolsos de un pago no puede superar el monto que fue aprobado.</dd></div>
+<div><dt>RN-08</dt><dd>No se guardan datos sensibles reales de los medios de pago, solo un detalle enmascarado, por
+ejemplo, los últimos 4 dígitos de una tarjeta.</dd></div>
+<div><dt>RN-09</dt><dd>Cada cambio de estado de un pago queda registrado en el historial, con el estado anterior, el
+estado nuevo, el motivo y la fecha. El alta del pago también se registra.</dd></div>
+<div><dt>RN-10</dt><dd>Repetir una operación que ya se aplicó no genera efectos adicionales: aprobar un pago APROBADO
+o rechazar uno RECHAZADO devuelve 200 con el estado actual, y un reembolso con una clave de control ya usada
+devuelve el reembolso existente. Una operación incompatible con el estado actual responde 409
+PAYMENT_INVALID_STATE.</dd></div>
+<div><dt>RN-11</dt><dd>La autorización es simulada y se resuelve por sorteo al iniciar el pago: 70 % APROBADO, 10 %
+RECHAZADO por fondos insuficientes, 10 % NO_AUTORIZADO porque el banco no autorizó el pago y 10 % ERROR, en cuyo
+caso hay que intentar de nuevo. El pago guarda el motivo del resultado. Los pesos son configurables.</dd></div>
+</dl>
+
+<h2>Diagrama de estados del pago</h2>
+<p>Resume las transiciones válidas de RN-04. El sorteo de RN-11 decide a cuál de los cuatro estados pasa un pago
+PENDIENTE. Un reembolso parcial no cambia el estado: el pago sigue APROBADO hasta que se reembolsa el total.</p>
+<figure class="ancha">
+<pre class="mermaid">
+stateDiagram-v2
+    direction LR
+    [*] --> PENDIENTE: iniciarPago (SRV-01)
+    PENDIENTE --> APROBADO: pago ok, 70 %
+    PENDIENTE --> RECHAZADO: fondos insuficientes, 10 %
+    PENDIENTE --> NO_AUTORIZADO: el banco no autorizó, 10 %
+    PENDIENTE --> ERROR: error, intente de nuevo, 10 %
+    APROBADO --> APROBADO: reembolso parcial
+    APROBADO --> REEMBOLSADO: reembolso total (SRV-05)
+    RECHAZADO --> [*]
+    NO_AUTORIZADO --> [*]
+    ERROR --> [*]
+    REEMBOLSADO --> [*]
+</pre>
+<figcaption>Figura 1. Estados del pago y transiciones válidas (RN-04) con las probabilidades del sorteo (RN-11).</figcaption>
+</figure>
+</section>

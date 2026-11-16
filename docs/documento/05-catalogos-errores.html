@@ -1,0 +1,261 @@
+<section>
+<h1>Catálogos de trazabilidad</h1>
+<p>Estos catálogos definen los identificadores que usan los casos de uso y la matriz maestra. Las entidades (ENT),
+relaciones (REL) y repositorios (REP) están en las secciones de DER y persistencia.</p>
+<h2>Servicios</h2>
+<table class="cat">
+<thead><tr><th style="width:8%">ID</th><th style="width:30%">Servicio y método</th><th>Responsabilidad</th><th style="width:13%">CU</th></tr></thead>
+<tbody>
+<tr><td>SRV-01</td><td>PagoService.iniciarPago()</td><td>Valida idempotencia, usuario, medio de pago, pedido y monto; crea el
+pago PENDIENTE, lo resuelve con el sorteo y, después del commit, avisa a Pedidos y notifica.</td><td>CU-01, CU-09</td></tr>
+<tr><td>SRV-02</td><td>PagoService.aprobarPago()</td><td>Modo manual: aplica la transición a APROBADO, registra historial,
+avisa a Pedidos y pide el comprobante.</td><td>CU-02</td></tr>
+<tr><td>SRV-03</td><td>PagoService.rechazarPago()</td><td>Modo manual: aplica la transición a RECHAZADO con motivo, registra
+historial, avisa a Pedidos y pide el aviso.</td><td>CU-03</td></tr>
+<tr><td>SRV-04</td><td>PagoService.consultarPago()</td><td>Busca por código público y controla que un cliente solo vea sus
+pagos.</td><td>CU-04</td></tr>
+<tr><td>SRV-05</td><td>ReembolsoService.reembolsarPago()</td><td>Valida estado, disponible e idempotencia; crea el reembolso
+y, si es total, marca el pago REEMBOLSADO.</td><td>CU-05</td></tr>
+<tr><td>SRV-06</td><td>PagoService.listarPagos()</td><td>Lista pagos paginados con filtros (incluye el filtro por código de
+pedido).</td><td>CU-06, CU-07</td></tr>
+<tr><td>SRV-07</td><td>MedioPagoService.registrarMedioPago()</td><td>Enmascara el detalle y registra el medio de pago del
+usuario autenticado.</td><td>CU-08</td></tr>
+<tr><td>SRV-08</td><td>PagoService.consultarHistorial()</td><td>Devuelve la línea de tiempo de estados del pago.</td><td>CU-10</td></tr>
+<tr><td>SRV-09</td><td>MedioPagoService.eliminarMedioPago()</td><td>Da de baja (lógica) un medio de pago del usuario
+autenticado.</td><td>CU-11</td></tr>
+<tr><td>SRV-10</td><td>AutorizadorSimulado.sortear()</td><td>Sortea el resultado de la autorización según los pesos
+configurados y arma el motivo.</td><td>CU-01</td></tr>
+</tbody>
+</table>
+
+<h2>APIs</h2>
+<p>La consigna nombra el parámetro como {id}; usamos {codigoPago} porque la API expone siempre el código
+público y nunca el identificador interno. Todas las respuestas con cuerpo son application/json.</p>
+<table class="cat">
+<thead><tr><th style="width:8%">ID</th><th style="width:40%">Método y ruta</th><th style="width:14%">Request</th><th style="width:10%">Response</th><th>Códigos HTTP</th></tr></thead>
+<tbody>
+<tr><td>API-01</td><td>POST /api/v1/payments</td><td>DTO-01</td><td>DTO-02</td><td>201, 200, 400, 401, 403, 409, 422, 503</td></tr>
+<tr><td>API-02</td><td>PATCH /api/v1/payments/{codigoPago}/approve</td><td>—</td><td>DTO-02</td><td>200, 401, 403, 404, 409</td></tr>
+<tr><td>API-03</td><td>PATCH /api/v1/payments/{codigoPago}/reject</td><td>DTO-03</td><td>DTO-02</td><td>200, 400, 401, 403, 404, 409</td></tr>
+<tr><td>API-04</td><td>GET /api/v1/payments/{codigoPago}</td><td>—</td><td>DTO-02</td><td>200, 401, 403, 404</td></tr>
+<tr><td>API-05</td><td>POST /api/v1/payments/{codigoPago}/refund</td><td>DTO-04</td><td>DTO-05</td><td>201, 200, 400, 401, 403, 404, 409, 422</td></tr>
+<tr><td>API-06</td><td>GET /api/v1/payments</td><td>Parámetros de filtro y paginación</td><td>DTO-06</td><td>200, 400, 401, 403</td></tr>
+<tr><td>API-07</td><td>POST /api/v1/payment-methods</td><td>DTO-07</td><td>DTO-08</td><td>201, 400, 401, 403, 422</td></tr>
+<tr><td>API-08</td><td>GET /api/v1/payments/{codigoPago}/history</td><td>—</td><td>DTO-09</td><td>200, 401, 403, 404</td></tr>
+<tr><td>API-09</td><td>DELETE /api/v1/payment-methods/{codigoMedioPago}</td><td>—</td><td>—</td><td>204, 401, 403, 404</td></tr>
+</tbody>
+</table>
+<p>Además de los códigos de la tabla, cualquier operación puede responder 405, 406, 415 o 500, y una ruta
+inexistente responde 404 (ver «Manejo de errores»).</p>
+
+<h2>DTOs</h2>
+<table class="cat">
+<thead><tr><th style="width:8%">ID</th><th style="width:24%">Nombre</th><th>Campos</th></tr></thead>
+<tbody>
+<tr><td>DTO-01</td><td>CrearPagoRequest</td><td>codigoPedido, codigoUsuario, codigoMedioPago, monto, moneda, claveControl</td></tr>
+<tr><td>DTO-02</td><td>PagoResponse</td><td>codigoPago, codigoPedido, estado, motivo, monto, moneda, medioPago (tipo,
+detalleEnmascarado), fechaCreacion, fechaActualizacion</td></tr>
+<tr><td>DTO-03</td><td>RechazarPagoRequest</td><td>motivo</td></tr>
+<tr><td>DTO-04</td><td>ReembolsoRequest</td><td>monto, motivo, claveControl</td></tr>
+<tr><td>DTO-05</td><td>ReembolsoResponse</td><td>codigoReembolso, codigoPago, monto, estado, montoDisponible, fechaSolicitud,
+fechaResolucion</td></tr>
+<tr><td>DTO-06</td><td>PaginaPagosResponse</td><td>content (lista de DTO-02), page, size, totalElements, totalPages</td></tr>
+<tr><td>DTO-07</td><td>MedioPagoRequest</td><td>tipo, numero (solo en tránsito, nunca se guarda completo)</td></tr>
+<tr><td>DTO-08</td><td>MedioPagoResponse</td><td>codigoMedioPago, tipo, detalleEnmascarado, activo</td></tr>
+<tr><td>DTO-09</td><td>HistorialEstadoResponse</td><td>estadoAnterior, estadoNuevo, motivo, fecha</td></tr>
+<tr><td>DTO-10</td><td>ErrorResponse</td><td>timestamp, status, code, message, path, correlationId</td></tr>
+</tbody>
+</table>
+
+<h2>Integraciones</h2>
+<p>Todas las integraciones son sincrónicas por REST, usan un JWT de servicio, propagan el header X-Correlation-Id
+y tienen timeout. INT-01 e INT-02 se llaman antes de abrir la transacción; INT-03 e INT-04, después del commit. El
+resultado de la autorización le llega a Pedidos dos veces: en la respuesta de API-01 y en el aviso INT-04.</p>
+<table class="cat">
+<thead><tr><th style="width:8%">ID</th><th style="width:13%">Módulo</th><th style="width:28%">Endpoint</th><th>Para qué</th><th style="width:22%">Si falla</th></tr></thead>
+<tbody>
+<tr><td>INT-01</td><td>Pedidos</td><td>GET /api/v1/orders/{id} con el header X-Cliente-Id</td><td>Obtener el estado y el total del
+pedido (RN-02).</td><td>503; no se crea el pago.</td></tr>
+<tr><td>INT-02</td><td>Usuarios</td><td>GET /api/v1/users/{codigoUsuario}</td><td>Verificar que el usuario exista y esté
+activo.</td><td>503; no se crea el pago.</td></tr>
+<tr><td>INT-03</td><td>Notificaciones</td><td>POST /api/v1/notifications</td><td>Pedir comprobantes de pago y de reembolso y
+avisos de pago no aprobado.</td><td>Se registra en el log; la operación de pago no se revierte.</td></tr>
+<tr><td>INT-04</td><td>Pedidos</td><td>POST a la ruta configurada en integraciones.pedidos.ruta-aviso</td><td>Avisar el resultado
+del pago (estado y motivo) cuando queda resuelto.</td><td>Se registra en el log; el pago no cambia.</td></tr>
+</tbody>
+</table>
+<p>Pendiente de acordar con los otros grupos: el swagger de Pedidos todavía no define el endpoint que recibe
+INT-04 (mientras la ruta esté vacía, no se llama); el de Usuarios no expone la consulta de INT-02 y usa
+identificadores numéricos; y falta alinear el cuerpo de INT-03 con el contrato de Notificaciones.</p>
+</section>
+
+<section>
+<h1>Matriz maestra de trazabilidad</h1>
+<p>Cada fila permite seguir un caso de uso desde sus reglas de negocio hasta la persistencia y las integraciones.
+Los CU-06 a CU-11 no tienen diagrama de secuencia propio porque no son parte de los cinco casos principales;
+CU-09 se ve en los flujos alternativos de SEC-01.</p>
+<table class="cat matriz">
+<thead><tr><th style="width:7%">CU</th><th style="width:17%">RN</th><th style="width:8%">SEC</th><th style="width:9%">SRV</th><th style="width:8%">API</th><th style="width:10%">DTO</th><th style="width:17%">ENT / REL</th><th style="width:12%">REP</th><th>INT</th></tr></thead>
+<tbody>
+<tr><td>CU-01</td><td>RN-01, 02, 04, 05, 08, 09, 11</td><td>SEC-01</td><td>SRV-01, 10</td><td>API-01</td><td>DTO-01, 02</td><td>ENT-01, 03, 04 / REL-02, 03</td><td>REP-01, 03, 04</td><td>INT-01, 02, 03, 04</td></tr>
+<tr><td>CU-02</td><td>RN-03, 04, 09, 10</td><td>SEC-02</td><td>SRV-02</td><td>API-02</td><td>DTO-02</td><td>ENT-01, 04 / REL-03</td><td>REP-01, 04</td><td>INT-03, 04</td></tr>
+<tr><td>CU-03</td><td>RN-03, 04, 05, 09, 10</td><td>SEC-03</td><td>SRV-03</td><td>API-03</td><td>DTO-03, 02</td><td>ENT-01, 04 / REL-03</td><td>REP-01, 04</td><td>INT-03, 04</td></tr>
+<tr><td>CU-04</td><td>RN-08</td><td>SEC-04</td><td>SRV-04</td><td>API-04</td><td>DTO-02</td><td>ENT-01, 03 / REL-02</td><td>REP-01</td><td>—</td></tr>
+<tr><td>CU-05</td><td>RN-04, 06, 07, 09, 10</td><td>SEC-05</td><td>SRV-05</td><td>API-05</td><td>DTO-04, 05</td><td>ENT-01, 02, 04 / REL-01, 03</td><td>REP-01, 02, 04</td><td>INT-03</td></tr>
+<tr><td>CU-06</td><td>RN-08</td><td>—</td><td>SRV-06</td><td>API-06</td><td>DTO-06</td><td>ENT-01, 03 / REL-02</td><td>REP-01</td><td>—</td></tr>
+<tr><td>CU-07</td><td>RN-05</td><td>—</td><td>SRV-06</td><td>API-06</td><td>DTO-06</td><td>ENT-01</td><td>REP-01</td><td>—</td></tr>
+<tr><td>CU-08</td><td>RN-08</td><td>—</td><td>SRV-07</td><td>API-07</td><td>DTO-07, 08</td><td>ENT-03</td><td>REP-03</td><td>—</td></tr>
+<tr><td>CU-09</td><td>RN-01, 05</td><td>SEC-01</td><td>SRV-01</td><td>API-01</td><td>DTO-01, 02</td><td>ENT-01</td><td>REP-01</td><td>—</td></tr>
+<tr><td>CU-10</td><td>RN-09</td><td>—</td><td>SRV-08</td><td>API-08</td><td>DTO-09</td><td>ENT-01, 04 / REL-03</td><td>REP-04</td><td>—</td></tr>
+<tr><td>CU-11</td><td>RN-08</td><td>—</td><td>SRV-09</td><td>API-09</td><td>—</td><td>ENT-03</td><td>REP-03</td><td>—</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h1>Manejo de errores</h1>
+<p>Todos los errores se devuelven con el formato normalizado del ecosistema (DTO-10). Lo arma un único
+componente (ErrorResponseFactory), que usan el GlobalExceptionHandler y el manejador de errores de seguridad,
+así los 401 y 403 tienen el mismo formato que el resto.</p>
+<table class="cat">
+<thead><tr><th style="width:18%">Campo</th><th>Descripción</th></tr></thead>
+<tbody>
+<tr><td>timestamp</td><td>Fecha y hora del error, en formato ISO-8601 sin zona horaria, igual que las fechas de los
+pagos.</td></tr>
+<tr><td>status</td><td>Código HTTP asociado al error.</td></tr>
+<tr><td>code</td><td>Código de error propio del módulo, según el listado de códigos de error del módulo.</td></tr>
+<tr><td>message</td><td>Mensaje descriptivo pensado para quien consume la API.</td></tr>
+<tr><td>path</td><td>Endpoint donde ocurrió el error.</td></tr>
+<tr><td>correlationId</td><td>Identificador de correlación, tomado del header X-Correlation-Id (o generado si no vino), que
+sirve para seguir el rastro entre módulos.</td></tr>
+</tbody>
+</table>
+
+<h2>Códigos de error del módulo</h2>
+<table class="cat">
+<thead><tr><th style="width:33%">Código</th><th style="width:8%">HTTP</th><th>Situación</th></tr></thead>
+<tbody>
+<tr><td>VALIDATION_ERROR</td><td>400</td><td>Faltan campos obligatorios o tienen un formato inválido; filtros, fechas u
+orden inválidos en el listado.</td></tr>
+<tr><td>UNAUTHORIZED</td><td>401</td><td>La solicitud no trae un JWT válido, o las credenciales del login son incorrectas.</td></tr>
+<tr><td>FORBIDDEN</td><td>403</td><td>El JWT es válido pero el rol no tiene permiso para la operación, o el recurso es de otro
+usuario.</td></tr>
+<tr><td>PAYMENT_NOT_FOUND</td><td>404</td><td>No existe un pago con el código informado.</td></tr>
+<tr><td>PAYMENT_METHOD_NOT_FOUND</td><td>404</td><td>No existe el medio de pago que se quiere dar de baja.</td></tr>
+<tr><td>PAYMENT_INVALID_STATE</td><td>409</td><td>Se intenta una operación que no está permitida para el estado actual del
+pago, o dos operaciones simultáneas chocaron sobre el mismo pago.</td></tr>
+<tr><td>DUPLICATE_PAYMENT_REQUEST</td><td>409</td><td>La clave de control ya se usó antes con datos distintos.</td></tr>
+<tr><td>PAYMENT_AMOUNT_MISMATCH</td><td>422</td><td>El monto del pago no coincide con el total del pedido.</td></tr>
+<tr><td>PAYMENT_METHOD_INVALID</td><td>422</td><td>El tipo o el número del medio de pago no son válidos, o el medio no
+existe, está inactivo o no pertenece al usuario.</td></tr>
+<tr><td>PAYMENT_USER_INVALID</td><td>422</td><td>El usuario no existe o está inactivo.</td></tr>
+<tr><td>ORDER_NOT_PAYABLE</td><td>422</td><td>El pedido no existe o no está pendiente de pago.</td></tr>
+<tr><td>REFUND_EXCEEDS_AMOUNT</td><td>422</td><td>El monto de reembolso solicitado supera lo disponible.</td></tr>
+<tr><td>EXTERNAL_SERVICE_UNAVAILABLE</td><td>503</td><td>Pedidos o Usuarios no respondieron a tiempo o respondieron con
+error. La causa queda en el log.</td></tr>
+<tr><td>INTERNAL_ERROR</td><td>500</td><td>Error no controlado. Nunca se exponen detalles internos ni stack traces.</td></tr>
+</tbody>
+</table>
+
+<h2>Códigos técnicos</h2>
+<p>No dependen de las reglas de negocio: describen un mal uso del protocolo HTTP.</p>
+<table class="cat">
+<thead><tr><th style="width:33%">Código</th><th style="width:8%">HTTP</th><th>Situación</th></tr></thead>
+<tbody>
+<tr><td>NOT_FOUND</td><td>404</td><td>La ruta no existe.</td></tr>
+<tr><td>METHOD_NOT_ALLOWED</td><td>405</td><td>La ruta existe pero no acepta ese método, por ejemplo un POST a
+/approve. La respuesta lleva el header Allow.</td></tr>
+<tr><td>NOT_ACCEPTABLE</td><td>406</td><td>El header Accept pide un formato que la API no produce (solo responde
+application/json).</td></tr>
+<tr><td>UNSUPPORTED_MEDIA_TYPE</td><td>415</td><td>El cuerpo no vino como application/json.</td></tr>
+</tbody>
+</table>
+
+<h2>Headers de respuesta</h2>
+<table class="cat">
+<thead><tr><th style="width:33%">Respuesta</th><th>Header</th></tr></thead>
+<tbody>
+<tr><td>201 Created</td><td>Location con la URL del recurso creado (API-01 y API-07). En API-05 apunta al pago, porque no
+hay una consulta de reembolsos.</td></tr>
+<tr><td>401 Unauthorized</td><td>WWW-Authenticate: Bearer.</td></tr>
+<tr><td>405 Method Not Allowed</td><td>Allow con los métodos que la ruta acepta.</td></tr>
+<tr><td>Todas</td><td>X-Correlation-Id, el mismo que llegó en la solicitud o uno generado.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h1>Decisiones técnicas</h1>
+<table class="cat">
+<thead><tr><th style="width:9%">ID</th><th>Decisión</th></tr></thead>
+<tbody>
+<tr><td>DEC-01</td><td>Cada tabla tiene un id interno bigint, que no se expone, y un código UUID único que es el que se usa
+en la API y en las referencias a otros módulos.</td></tr>
+<tr><td>DEC-02</td><td>La clave de control viaja en el cuerpo de la solicitud (claveControl) y tiene restricción UNIQUE, que
+también cubre solicitudes simultáneas.</td></tr>
+<tr><td>DEC-03</td><td>La autorización es simulada y la resuelve Pagos con un sorteo al iniciar el pago (RN-11). El resultado
+vuelve en la respuesta de API-01 y además Pagos se lo avisa a Pedidos (INT-04). Aprobar y rechazar a mano quedan
+para el modo manual (autorizacion.automatica=false).</td></tr>
+<tr><td>DEC-04</td><td>Usuarios es el único emisor de JWT. Pagos valida localmente la firma y el rol en cada request; entre
+APIs se usa un JWT de servicio.</td></tr>
+<tr><td>DEC-05</td><td>Pago usa bloqueo optimista (@Version) para que dos operaciones simultáneas sobre el mismo pago no
+generen dos transiciones. Los reembolsos además leen el pago con bloqueo de escritura.</td></tr>
+<tr><td>DEC-06</td><td>Los estados y tipos se modelan como enums y se persisten con @Enumerated(STRING). Los montos usan
+BigDecimal y numeric(12,2).</td></tr>
+<tr><td>DEC-07</td><td>Todas las relaciones son LAZY. Cuando hace falta el medio de pago se usa una consulta con fetch join,
+para evitar el problema N+1.</td></tr>
+<tr><td>DEC-08</td><td>Si Notificaciones o el aviso a Pedidos fallan, la operación de pago no se revierte; el error queda
+registrado en el log.</td></tr>
+<tr><td>DEC-09</td><td>Los controladores implementan interfaces (IPagoController, IMedioPagoController) con las anotaciones
+de OpenAPI y no tienen reglas de negocio.</td></tr>
+<tr><td>DEC-10</td><td>Las llamadas HTTP a otros módulos nunca se hacen con la transacción abierta: Usuarios y Pedidos se
+consultan antes, y el aviso a Pedidos y la notificación se envían después del commit. La base solo queda tomada
+para el alta del pago y para el cambio de estado.</td></tr>
+<tr><td>DEC-11</td><td>La base es H2 en memoria: cada arranque empieza limpio y carga datos de demo. El diseño original
+preveía PostgreSQL con docker-compose; el equipo decidió mantener H2 para simplificar la ejecución.</td></tr>
+<tr><td>DEC-12</td><td>Mientras no esté integrado el Servicio de Usuarios, hay un único usuario de demo (demo / demo123)
+con todos los roles, que simula la emisión del JWT. Las reglas de rol por endpoint no cambian.</td></tr>
+<tr><td>DEC-13</td><td>Cada operación imprime en la consola un bloque con un renglón por paso (solicitud, validaciones,
+registro, sorteo, aviso a Pedidos, notificación y resultado), para mostrar el flujo en la presentación.</td></tr>
+<tr><td>DEC-14</td><td>Los estados NO_AUTORIZADO y ERROR son finales, igual que RECHAZADO: el pago queda registrado para
+auditoría y el reintento se hace con una clave de control nueva. Por eso API-01 responde 201 aunque el pago no
+quede aprobado: el resultado de negocio va en el cuerpo (estado y motivo).</td></tr>
+<tr><td>DEC-15</td><td>Las rutas sin regla de rol exigen estar autenticado en lugar de denegarse siempre, para que una ruta
+o un método equivocados respondan 404 o 405 y no 403.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h1>Backlog</h1>
+<table class="cat">
+<thead><tr><th style="width:8%">ID</th><th>Tarea</th><th style="width:10%">Prioridad</th><th style="width:12%">Estado</th><th style="width:9%">Entrega</th></tr></thead>
+<tbody>
+<tr><td>BL-01</td><td>Análisis y diseño del módulo (este documento)</td><td>Alta</td><td>Hecho</td><td>1</td></tr>
+<tr><td>BL-02</td><td>Repositorio Git con README y estructura de carpetas</td><td>Alta</td><td>Hecho</td><td>1</td></tr>
+<tr><td>BL-03</td><td>Acordar contratos con Pedidos, Usuarios y Notificaciones (INT-01 a INT-04)</td><td>Alta</td><td>En curso</td><td>1 y 2</td></tr>
+<tr><td>BL-04</td><td>Proyecto Spring Boot con Java 25 y H2 en memoria</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-05</td><td>Entidades, enums y relaciones JPA (ENT-01 a ENT-04)</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-06</td><td>Repositorios REP-01 a REP-04</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-07</td><td>SRV-01: iniciar pago con idempotencia</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-08</td><td>SRV-02 y SRV-03: aprobar y rechazar con historial</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-09</td><td>SRV-04: consultar pago</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-10</td><td>SRV-05: reembolsos totales y parciales</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-11</td><td>Seguridad: JwtAuthenticationFilter y reglas por rol</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-12</td><td>GlobalExceptionHandler y errores normalizados</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-13</td><td>OpenAPI y Swagger con interfaces I*Controller</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-14</td><td>Clientes HTTP de INT-01 a INT-03, con mocks mientras no estén los otros módulos</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-15</td><td>SRV-06: listado paginado con filtros</td><td>Media</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-16</td><td>SRV-07: registro de medios de pago</td><td>Media</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-17</td><td>SRV-08: historial de estados</td><td>Media</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-18</td><td>Datos de prueba y contrato OpenAPI exportado en el repositorio (docs/)</td><td>Media</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-19</td><td>Tests de las reglas de negocio RN-01 a RN-11 y del contrato OpenAPI</td><td>Media</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-20</td><td>SRV-09: baja de medios de pago</td><td>Media</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-21</td><td>SRV-10: autorización simulada por sorteo, con los estados NO_AUTORIZADO y ERROR</td><td>Alta</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-22</td><td>Prints del flujo en la consola y usuario único de demo</td><td>Media</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-23</td><td>Códigos y headers HTTP: 404, 405, 406, 415, Location, WWW-Authenticate y Allow</td><td>Media</td><td>Hecho</td><td>2</td></tr>
+<tr><td>BL-24</td><td>INT-04: endpoint de Pedidos que recibe el aviso del resultado del pago</td><td>Alta</td><td>Pendiente</td><td>3</td></tr>
+<tr><td>BL-25</td><td>Integración real: firma y claims del JWT de Usuarios, identificadores y medio de pago que envía Pedidos, cuerpo de Notificaciones</td><td>Alta</td><td>Pendiente</td><td>3</td></tr>
+</tbody>
+</table>
+</section>

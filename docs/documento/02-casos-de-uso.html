@@ -1,0 +1,329 @@
+<section>
+<h1>Casos de uso</h1>
+<p>Incluimos los cinco casos de uso mínimos que pide la consigna (iniciar pago, autorizar o rechazar, consultar,
+reembolsar y listar pagos) y sumamos casos de uso complementarios para completar el ciclo funcional del
+módulo. Cada CU referencia sus reglas, secuencia, servicio, API, DTO y entidades; la matriz maestra de
+trazabilidad los reúne en una sola tabla.</p>
+
+<h3>CU-01. Iniciar pago</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-01</td></tr>
+<tr><td>Nombre</td><td>Iniciar pago</td></tr>
+<tr><td>Actor principal</td><td>Servicio de Pedidos</td></tr>
+<tr><td>Objetivo</td><td>Registrar un intento de pago válido y único para un pedido y resolverlo con la autorización
+simulada.</td></tr>
+<tr><td>Precondiciones</td><td>El pedido existe y está pendiente de pago (estado BORRADOR). El usuario está activo y el
+medio de pago le pertenece y está activo. Pedidos envía un JWT de servicio con permiso de escritura.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>Pedidos envía un POST a /api/v1/payments con el código de pedido, el código de usuario, el código del medio de
+pago, el monto, la moneda y la clave de control (DTO-01).</li>
+<li>Pagos revisa si esa clave de control ya se usó antes (RN-01).</li>
+<li>Pagos consulta al Servicio de Usuarios que el usuario exista y esté activo (INT-02).</li>
+<li>Pagos verifica que el medio de pago exista, esté activo y pertenezca al usuario.</li>
+<li>Pagos consulta a Pedidos el estado y el total del pedido (INT-01) y verifica que el monto coincida exactamente
+(RN-02).</li>
+<li>Pagos crea el pago en estado PENDIENTE y registra el alta en el historial (RN-09).</li>
+<li>Pagos sortea el resultado de la autorización (RN-11): el pago pasa a APROBADO, RECHAZADO, NO_AUTORIZADO o
+ERROR, con su motivo, y el cambio queda en el historial (RN-04, RN-09).</li>
+<li>Con el cambio ya confirmado en la base, Pagos le avisa el resultado a Pedidos (INT-04) y le pide a Notificaciones
+el comprobante o el aviso (INT-03).</li>
+<li>Pagos responde 201 Created con el pago, su estado y su motivo (DTO-02) y el header Location.</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt">
+<p>2a. Si la clave ya se usó con los mismos datos, responde 200 OK con el pago existente, sin crear otro ni volver a
+sortear (RN-01, RN-05).</p>
+<p>2b. Si la clave ya se usó con datos distintos, responde 409 DUPLICATE_PAYMENT_REQUEST.</p>
+<p>3a. Si el usuario no existe o está inactivo, responde 422 PAYMENT_USER_INVALID.</p>
+<p>4a. Si el medio de pago no existe, está inactivo o es de otro usuario, responde 422 PAYMENT_METHOD_INVALID.</p>
+<p>5a. Si el pedido no existe o no está pendiente de pago, responde 422 ORDER_NOT_PAYABLE.</p>
+<p>5b. Si el monto no coincide, responde 422 PAYMENT_AMOUNT_MISMATCH.</p>
+<p>5c. Si Pedidos o Usuarios no responden, responde 503 EXTERNAL_SERVICE_UNAVAILABLE y no se crea el pago.</p>
+<p>7a. En modo manual (autorización automática desactivada) no hay sorteo: el pago queda PENDIENTE hasta CU-02 o
+CU-03.</p>
+<p>8a. Si el aviso a Pedidos o Notificaciones falla, el pago no cambia y el error se registra en el log.</p>
+</td></tr>
+<tr><td>Resultado</td><td>Queda creado un pago ya resuelto: APROBADO, RECHAZADO, NO_AUTORIZADO o ERROR. Si no quedó
+APROBADO, Pedidos puede reintentar con otra clave de control (RN-05).</td></tr>
+<tr><td>RN asociadas</td><td>RN-01, RN-02, RN-04, RN-05, RN-08, RN-09, RN-11</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-01 Pago, ENT-03 MedioPago, ENT-04 HistorialEstadoPago / REL-02, REL-03</td></tr>
+<tr><td>Secuencia</td><td>SEC-01</td></tr>
+<tr><td>Servicio</td><td>SRV-01 PagoService.iniciarPago(), SRV-10 AutorizadorSimulado.sortear()</td></tr>
+<tr><td>API / DTO</td><td>API-01 POST /api/v1/payments / DTO-01, DTO-02</td></tr>
+</table>
+
+<h3>CU-02. Autorizar pago (modo manual)</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-02</td></tr>
+<tr><td>Nombre</td><td>Autorizar pago</td></tr>
+<tr><td>Actor principal</td><td>Servicio de Pedidos (simula la respuesta de la pasarela)</td></tr>
+<tr><td>Objetivo</td><td>Aprobar a mano un pago pendiente. Solo hace falta en modo manual: con el sorteo activo el pago
+ya sale resuelto de CU-01.</td></tr>
+<tr><td>Precondiciones</td><td>El pago existe. Pedidos envía un JWT de servicio con permiso de escritura.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>Pedidos envía un PATCH a /api/v1/payments/{codigoPago}/approve.</li>
+<li>Pagos busca el pago por su código público.</li>
+<li>Pagos verifica que el pago esté en estado PENDIENTE.</li>
+<li>El pago pasa a APROBADO (RN-04) y se registra el cambio en el historial (RN-09).</li>
+<li>Después del commit, Pagos le avisa a Pedidos (INT-04) y le pide a Notificaciones el comprobante (INT-03).</li>
+<li>Pagos responde 200 OK con el pago en estado APROBADO (DTO-02). Con esa respuesta, Pedidos confirma el pedido
+(RN-03).</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt">
+<p>2a. Si el pago no existe, responde 404 PAYMENT_NOT_FOUND.</p>
+<p>3a. Si el pago ya está APROBADO, responde 200 OK con el pago sin modificarlo (RN-10).</p>
+<p>3b. Si el pago está RECHAZADO, NO_AUTORIZADO, en ERROR o REEMBOLSADO, responde 409 PAYMENT_INVALID_STATE
+(RN-04).</p>
+<p>5a. Si Pedidos o Notificaciones no responden, el pago queda aprobado igual y el error se registra en el log.</p>
+</td></tr>
+<tr><td>Resultado</td><td>El pago queda en estado APROBADO, con el historial actualizado.</td></tr>
+<tr><td>RN asociadas</td><td>RN-03, RN-04, RN-09, RN-10</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-01 Pago, ENT-04 HistorialEstadoPago / REL-03</td></tr>
+<tr><td>Secuencia</td><td>SEC-02</td></tr>
+<tr><td>Servicio</td><td>SRV-02 PagoService.aprobarPago()</td></tr>
+<tr><td>API / DTO</td><td>API-02 PATCH /api/v1/payments/{codigoPago}/approve / DTO-02</td></tr>
+</table>
+
+<h3>CU-03. Rechazar pago (modo manual)</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-03</td></tr>
+<tr><td>Nombre</td><td>Rechazar pago</td></tr>
+<tr><td>Actor principal</td><td>Servicio de Pedidos (simula la respuesta de la pasarela)</td></tr>
+<tr><td>Objetivo</td><td>Rechazar a mano un pago pendiente, dejando registrado el motivo. Solo hace falta en modo
+manual.</td></tr>
+<tr><td>Precondiciones</td><td>El pago existe. Pedidos envía un JWT de servicio con permiso de escritura.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>Pedidos envía un PATCH a /api/v1/payments/{codigoPago}/reject con el motivo del rechazo (DTO-03).</li>
+<li>Pagos busca el pago por su código público.</li>
+<li>Pagos verifica que el pago esté en estado PENDIENTE.</li>
+<li>El pago pasa a RECHAZADO (RN-04) y se registra el cambio en el historial con el motivo (RN-09).</li>
+<li>Después del commit, Pagos le avisa a Pedidos (INT-04) y le pide a Notificaciones el aviso de rechazo (INT-03).</li>
+<li>Pagos responde 200 OK con el pago en estado RECHAZADO (DTO-02). El pedido no avanza (RN-03).</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt">
+<p>2a. Si el pago no existe, responde 404 PAYMENT_NOT_FOUND.</p>
+<p>3a. Si el pago ya está RECHAZADO, responde 200 OK con el pago sin modificarlo (RN-10).</p>
+<p>3b. Si el pago está APROBADO, NO_AUTORIZADO, en ERROR o REEMBOLSADO, responde 409 PAYMENT_INVALID_STATE
+(RN-04).</p>
+</td></tr>
+<tr><td>Resultado</td><td>El pago queda en estado RECHAZADO, con el historial actualizado. Para reintentar, Pedidos
+envía un pago nuevo con otra clave de control (RN-05).</td></tr>
+<tr><td>RN asociadas</td><td>RN-03, RN-04, RN-05, RN-09, RN-10</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-01 Pago, ENT-04 HistorialEstadoPago / REL-03</td></tr>
+<tr><td>Secuencia</td><td>SEC-03</td></tr>
+<tr><td>Servicio</td><td>SRV-03 PagoService.rechazarPago()</td></tr>
+<tr><td>API / DTO</td><td>API-03 PATCH /api/v1/payments/{codigoPago}/reject / DTO-03, DTO-02</td></tr>
+</table>
+
+<h3>CU-04. Consultar pago</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-04</td></tr>
+<tr><td>Nombre</td><td>Consultar pago</td></tr>
+<tr><td>Actor principal</td><td>Portal Web (cliente), Servicio de Pedidos o Administrador</td></tr>
+<tr><td>Objetivo</td><td>Consultar el estado actual, el motivo, el monto y el medio de pago de un pago por su código
+público.</td></tr>
+<tr><td>Precondiciones</td><td>El actor está autenticado y cuenta con el código del pago que quiere consultar.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>El actor hace un GET a /api/v1/payments/{codigoPago}.</li>
+<li>Pagos busca el registro por su código público, nunca por el identificador interno.</li>
+<li>Si el actor tiene rol CLIENTE, Pagos verifica que el pago le pertenezca, comparando el código de usuario del
+JWT.</li>
+<li>Pagos responde 200 OK con el estado actual, el motivo, el monto y el medio de pago enmascarado (DTO-02).</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt">
+<p>2a. Si el código de pago no existe, responde 404 PAYMENT_NOT_FOUND.</p>
+<p>3a. Si el pago es de otro usuario, responde 403 FORBIDDEN.</p>
+</td></tr>
+<tr><td>Resultado</td><td>Quien consulta obtiene el estado actualizado del pago.</td></tr>
+<tr><td>RN asociadas</td><td>RN-08</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-01 Pago, ENT-03 MedioPago / REL-02</td></tr>
+<tr><td>Secuencia</td><td>SEC-04</td></tr>
+<tr><td>Servicio</td><td>SRV-04 PagoService.consultarPago()</td></tr>
+<tr><td>API / DTO</td><td>API-04 GET /api/v1/payments/{codigoPago} / DTO-02</td></tr>
+</table>
+
+<h3>CU-05. Reembolsar pago</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-05</td></tr>
+<tr><td>Nombre</td><td>Reembolsar pago</td></tr>
+<tr><td>Actor principal</td><td>Servicio de Pedidos (cancelación del pedido) o Administrador</td></tr>
+<tr><td>Objetivo</td><td>Devolver total o parcialmente un pago aprobado.</td></tr>
+<tr><td>Precondiciones</td><td>El pago existe. El actor tiene permiso de escritura.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>Se envía un POST a /api/v1/payments/{codigoPago}/refund con el monto, el motivo y una clave de control del
+reembolso (DTO-04).</li>
+<li>Pagos busca el pago por su código público, con bloqueo, para que dos reembolsos simultáneos se ejecuten de a
+uno.</li>
+<li>Pagos revisa si la clave de control del reembolso ya se usó (RN-10).</li>
+<li>Pagos verifica que el pago esté en estado APROBADO (RN-06).</li>
+<li>Pagos valida que el monto no supere lo disponible, es decir, el monto aprobado menos lo ya reembolsado
+(RN-07).</li>
+<li>Pagos crea el Reembolso en estado APROBADO, de forma simulada. Si con este reembolso se cubre el total, el pago
+pasa a REEMBOLSADO y se registra en el historial (RN-04, RN-09).</li>
+<li>Después del commit, Pagos le pide al Servicio de Notificaciones el comprobante (INT-03) y responde 201 Created
+(DTO-05).</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt">
+<p>2a. Si el pago no existe, responde 404 PAYMENT_NOT_FOUND.</p>
+<p>3a. Si la clave de control del reembolso ya se usó con los mismos datos, responde 200 OK con el reembolso
+existente (RN-10). Si se usó con otro monto o sobre otro pago, responde 409 DUPLICATE_PAYMENT_REQUEST.</p>
+<p>4a. Si el pago no está APROBADO (incluye REEMBOLSADO), responde 409 PAYMENT_INVALID_STATE.</p>
+<p>5a. Si el monto supera lo disponible, responde 422 REFUND_EXCEEDS_AMOUNT.</p>
+</td></tr>
+<tr><td>Resultado</td><td>Queda registrado el reembolso. Si es total, el pago pasa a REEMBOLSADO; si es parcial, el pago
+sigue APROBADO con menos monto disponible para reembolsar.</td></tr>
+<tr><td>RN asociadas</td><td>RN-04, RN-06, RN-07, RN-09, RN-10</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-01 Pago, ENT-02 Reembolso, ENT-04 HistorialEstadoPago / REL-01, REL-03</td></tr>
+<tr><td>Secuencia</td><td>SEC-05</td></tr>
+<tr><td>Servicio</td><td>SRV-05 ReembolsoService.reembolsarPago()</td></tr>
+<tr><td>API / DTO</td><td>API-05 POST /api/v1/payments/{codigoPago}/refund / DTO-04, DTO-05</td></tr>
+</table>
+
+<h3>CU-06. Listar pagos</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-06</td></tr>
+<tr><td>Nombre</td><td>Listar pagos</td></tr>
+<tr><td>Actor principal</td><td>Administrador o Analista (a través de Analítica)</td></tr>
+<tr><td>Objetivo</td><td>Obtener un listado paginado y filtrable de pagos para auditoría y métricas.</td></tr>
+<tr><td>Precondiciones</td><td>Quien consulta está autenticado con rol ADMINISTRADOR, ANALISTA o con un JWT de servicio
+de lectura.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>Se envía un GET a /api/v1/payments con filtros opcionales (estado, codigoUsuario, codigoPedido, desde, hasta) y
+paginación (page, size, sort).</li>
+<li>Pagos consulta el repositorio aplicando esos filtros.</li>
+<li>Pagos responde 200 OK con la página de resultados (DTO-06).</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt"><p>1a. Si los parámetros no son válidos, responde 400 VALIDATION_ERROR.</p></td></tr>
+<tr><td>Resultado</td><td>Se obtiene un listado paginado de pagos según los filtros aplicados.</td></tr>
+<tr><td>RN asociadas</td><td>RN-08</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-01 Pago, ENT-03 MedioPago / REL-02</td></tr>
+<tr><td>Secuencia</td><td>No aplica (no es uno de los cinco CU principales)</td></tr>
+<tr><td>Servicio</td><td>SRV-06 PagoService.listarPagos()</td></tr>
+<tr><td>API / DTO</td><td>API-06 GET /api/v1/payments / DTO-06</td></tr>
+</table>
+
+<h3>CU-07. Consultar pagos asociados a un pedido</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-07</td></tr>
+<tr><td>Nombre</td><td>Consultar pagos asociados a un pedido</td></tr>
+<tr><td>Actor principal</td><td>Servicio de Pedidos o Administrador</td></tr>
+<tr><td>Objetivo</td><td>Recuperar todos los intentos de pago de un pedido para reconstruir su trazabilidad.</td></tr>
+<tr><td>Precondiciones</td><td>El actor está autenticado y conoce el código del pedido.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>Se envía un GET a /api/v1/payments?codigoPedido={codigoPedido}.</li>
+<li>Pagos filtra los pagos por el código de pedido.</li>
+<li>Pagos responde 200 OK con la lista de intentos de pago del pedido, ordenados por fecha (DTO-06). Puede haber más
+de uno por los reintentos (RN-05).</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt"><p>2a. Si el pedido no tiene pagos, responde 200 OK con la lista vacía.</p></td></tr>
+<tr><td>Resultado</td><td>Se obtiene la trazabilidad de los pagos del pedido. Se reutiliza el endpoint de listado con un
+filtro, para no chocar con GET /api/v1/payments/{codigoPago} de CU-04.</td></tr>
+<tr><td>RN asociadas</td><td>RN-05</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-01 Pago</td></tr>
+<tr><td>Secuencia</td><td>No aplica</td></tr>
+<tr><td>Servicio</td><td>SRV-06 PagoService.listarPagos()</td></tr>
+<tr><td>API / DTO</td><td>API-06 GET /api/v1/payments?codigoPedido= / DTO-06</td></tr>
+</table>
+
+<h3>CU-08. Registrar medio de pago</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-08</td></tr>
+<tr><td>Nombre</td><td>Registrar medio de pago</td></tr>
+<tr><td>Actor principal</td><td>Cliente, a través del Portal Web</td></tr>
+<tr><td>Objetivo</td><td>Registrar un medio de pago simulado del usuario guardando solo un detalle enmascarado.</td></tr>
+<tr><td>Precondiciones</td><td>El usuario está autenticado con rol CLIENTE.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>El cliente envía un POST a /api/v1/payment-methods con el tipo y el número del medio de pago (DTO-07).</li>
+<li>Pagos toma el código de usuario del JWT, no del cuerpo de la solicitud.</li>
+<li>Pagos enmascara el detalle sensible, guarda solo los últimos 4 dígitos y descarta el número completo (RN-08).</li>
+<li>Pagos crea el MedioPago activo asociado al usuario y responde 201 Created con su código (DTO-08) y el header
+Location.</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt">
+<p>1a. Si falta el tipo o el número, responde 400 VALIDATION_ERROR.</p>
+<p>1b. Si el tipo de medio de pago no es soportado o el número no es válido, responde 422 PAYMENT_METHOD_INVALID.</p>
+</td></tr>
+<tr><td>Resultado</td><td>El medio de pago queda disponible para usarse en futuros pagos.</td></tr>
+<tr><td>RN asociadas</td><td>RN-08</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-03 MedioPago</td></tr>
+<tr><td>Secuencia</td><td>No aplica</td></tr>
+<tr><td>Servicio</td><td>SRV-07 MedioPagoService.registrarMedioPago()</td></tr>
+<tr><td>API / DTO</td><td>API-07 POST /api/v1/payment-methods / DTO-07, DTO-08</td></tr>
+</table>
+
+<h3>CU-09. Detectar solicitudes duplicadas mediante idempotencia</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-09</td></tr>
+<tr><td>Nombre</td><td>Detectar solicitudes duplicadas mediante idempotencia</td></tr>
+<tr><td>Actor principal</td><td>Servicio de Pedidos</td></tr>
+<tr><td>Objetivo</td><td>Evitar que una misma solicitud de pago genere más de un pago y detectar la reutilización de la
+clave con datos distintos.</td></tr>
+<tr><td>Precondiciones</td><td>La solicitud de pago incluye la clave de control en el campo claveControl de DTO-01.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>Pedidos envía un POST a /api/v1/payments con la clave de control en el cuerpo.</li>
+<li>Pagos busca si existe un pago con esa clave.</li>
+<li>Si no existe, sigue el flujo de CU-01.</li>
+<li>Si existe y los datos coinciden (pedido, usuario, monto y medio de pago), devuelve el pago original con 200 OK,
+en el estado en que haya quedado, sin volver a sortear.</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt">
+<p>4a. Si la clave fue usada con datos distintos, responde 409 DUPLICATE_PAYMENT_REQUEST.</p>
+<p>4b. Si llegan dos solicitudes simultáneas con la misma clave, la restricción UNIQUE de clave_control hace fallar
+la segunda inserción y Pagos devuelve el pago creado por la primera.</p>
+</td></tr>
+<tr><td>Resultado</td><td>Se evita la creación de pagos duplicados.</td></tr>
+<tr><td>RN asociadas</td><td>RN-01, RN-05</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-01 Pago</td></tr>
+<tr><td>Secuencia</td><td>SEC-01 (flujos alternativos)</td></tr>
+<tr><td>Servicio</td><td>SRV-01 PagoService.iniciarPago()</td></tr>
+<tr><td>API / DTO</td><td>API-01 POST /api/v1/payments / DTO-01, DTO-02</td></tr>
+</table>
+
+<h3>CU-10. Consultar historial de estados del pago</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-10</td></tr>
+<tr><td>Nombre</td><td>Consultar historial de estados del pago</td></tr>
+<tr><td>Actor principal</td><td>Administrador</td></tr>
+<tr><td>Objetivo</td><td>Consultar la línea de tiempo de cambios de estado de un pago.</td></tr>
+<tr><td>Precondiciones</td><td>El actor está autenticado con rol ADMINISTRADOR.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>Se envía un GET a /api/v1/payments/{codigoPago}/history.</li>
+<li>Pagos recupera todos los registros de HistorialEstadoPago del pago, ordenados por fecha.</li>
+<li>Pagos responde 200 OK con la línea de tiempo completa (DTO-09).</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt"><p>2a. Si el código de pago no existe, responde 404 PAYMENT_NOT_FOUND.</p></td></tr>
+<tr><td>Resultado</td><td>Se obtiene la trazabilidad completa del pago, útil para auditoría.</td></tr>
+<tr><td>RN asociadas</td><td>RN-09</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-01 Pago, ENT-04 HistorialEstadoPago / REL-03</td></tr>
+<tr><td>Secuencia</td><td>No aplica</td></tr>
+<tr><td>Servicio</td><td>SRV-08 PagoService.consultarHistorial()</td></tr>
+<tr><td>API / DTO</td><td>API-08 GET /api/v1/payments/{codigoPago}/history / DTO-09</td></tr>
+</table>
+
+<h3>CU-11. Dar de baja medio de pago</h3>
+<table class="cu">
+<tr><td>ID</td><td>CU-11</td></tr>
+<tr><td>Nombre</td><td>Dar de baja medio de pago</td></tr>
+<tr><td>Actor principal</td><td>Cliente, a través del Portal Web</td></tr>
+<tr><td>Objetivo</td><td>Desactivar un medio de pago propio para que no pueda usarse en pagos nuevos, sin borrar los
+pagos ya hechos con él.</td></tr>
+<tr><td>Precondiciones</td><td>El usuario está autenticado con rol CLIENTE.</td></tr>
+<tr><td>Flujo principal</td><td><ol>
+<li>El cliente envía un DELETE a /api/v1/payment-methods/{codigoMedioPago}.</li>
+<li>Pagos busca el medio de pago por su código público.</li>
+<li>Pagos verifica que pertenezca al usuario del JWT.</li>
+<li>Pagos lo marca como inactivo (baja lógica) y responde 204 No Content, sin cuerpo.</li>
+</ol></td></tr>
+<tr><td>Flujo alternativo</td><td class="alt">
+<p>2a. Si el medio de pago no existe, responde 404 PAYMENT_METHOD_NOT_FOUND.</p>
+<p>3a. Si pertenece a otro usuario, responde 403 FORBIDDEN.</p>
+<p>4a. Si ya estaba inactivo, responde 204 igual, sin cambios.</p>
+</td></tr>
+<tr><td>Resultado</td><td>El medio de pago deja de servir para pagos nuevos (CU-01 responde 422
+PAYMENT_METHOD_INVALID); los pagos previos se conservan.</td></tr>
+<tr><td>RN asociadas</td><td>RN-08</td></tr>
+<tr><td>Entidades / relaciones</td><td>ENT-03 MedioPago</td></tr>
+<tr><td>Secuencia</td><td>No aplica</td></tr>
+<tr><td>Servicio</td><td>SRV-09 MedioPagoService.eliminarMedioPago()</td></tr>
+<tr><td>API / DTO</td><td>API-09 DELETE /api/v1/payment-methods/{codigoMedioPago} / sin cuerpo</td></tr>
+</table>
+</section>

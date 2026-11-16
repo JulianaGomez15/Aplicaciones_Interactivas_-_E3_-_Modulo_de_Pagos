@@ -1,0 +1,56 @@
+@page { size: A4; margin: 2.3cm 1.9cm 2.3cm 1.9cm; }
+@page apaisada { size: A4 landscape; margin: 2.3cm 1.9cm 2.3cm 1.9cm; }
+* { box-sizing: border-box; }
+html { font-family: Carlito, Calibri, sans-serif; font-size: 10.5pt; line-height: 1.25; color: #000; }
+body { margin: 0; }
+p { margin: 0 0 6pt 0; text-align: justify; }
+h1 { font-family: "Liberation Sans", Arial, sans-serif; font-size: 15pt; font-weight: bold; margin: 0 0 8pt 0;
+     padding-bottom: 3pt; border-bottom: 1px solid #000; break-after: avoid; }
+h2 { font-family: "Liberation Sans", Arial, sans-serif; font-size: 12.5pt; font-weight: bold; font-style: italic;
+     margin: 12pt 0 5pt 0; break-after: avoid; }
+h3 { font-family: "Liberation Sans", Arial, sans-serif; font-size: 10pt; font-weight: bold; color: #2f5597;
+     margin: 11pt 0 5pt 0; break-after: avoid; }
+section { break-before: page; }
+section.primera { break-before: auto; }
+section.apaisada { page: apaisada; }
+ul { margin: 0 0 6pt 0; padding-left: 28pt; }
+li { margin-bottom: 1pt; text-align: justify; }
+code { font-family: Carlito, sans-serif; }
+
+/* Reglas de negocio en formato lista */
+dl.rn { margin: 0; }
+dl.rn div { display: flex; margin-bottom: 4pt; break-inside: avoid; }
+dl.rn dt { flex: 0 0 46pt; font-weight: bold; }
+dl.rn dd { margin: 0; text-align: justify; }
+
+/* Tabla de caso de uso */
+table { border-collapse: collapse; width: 100%; }
+table.cu { margin-bottom: 4pt; }
+table.cu td { border: 1px solid #000; padding: 3pt 5pt; vertical-align: top; font-size: 9.5pt; }
+table.cu td:first-child { width: 23%; background: #f2f2f2; font-weight: bold; }
+table.cu tr { break-inside: avoid; }
+table.cu ol { margin: 0; padding-left: 20pt; }
+table.cu ol li { text-align: left; margin-bottom: 1pt; }
+table.cu .alt { font-style: italic; }
+table.cu .alt p { margin: 0; text-align: left; }
+
+/* Tablas de catalogo */
+table.cat { margin: 4pt 0 8pt 0; font-size: 8.6pt; }
+table.cat th { background: #1f3864; color: #fff; text-align: left; padding: 4pt 5pt; font-weight: bold;
+               border: 1px solid #1f3864; }
+table.cat td { border: 1px solid #bfbfbf; padding: 4pt 5pt; vertical-align: middle; }
+table.cat td:first-child { font-weight: bold; white-space: nowrap; }
+table.cat tr { break-inside: avoid; }
+table.cat thead { display: table-header-group; }
+table.cat.suelta td:first-child { font-weight: normal; white-space: normal; }
+table.cat.negrita1 td:first-child { font-weight: bold; }
+
+/* Figuras */
+figure { margin: 6pt 0 8pt 0; text-align: center; break-inside: avoid; }
+figure svg { display: block; margin: 0 auto; }
+/* Las etiquetas de Mermaid usan <p>: no deben heredar el justificado ni los margenes del texto */
+figure svg p { margin: 0; text-align: center; }
+figcaption { font-style: italic; font-size: 9pt; color: #595959; margin-top: 4pt; }
+pre.mermaid { margin: 0; font-size: 12px; }
+table.cat.matriz { font-size: 8.2pt; }
+table.cat.matriz td:nth-child(3), table.cat.matriz td:nth-child(4), table.cat.matriz td:nth-child(5) { white-space: nowrap; }

@@ -1,0 +1,359 @@
+<section class="apaisada">
+<h1>Diagramas de secuencia</h1>
+<p>Diagramas de los cinco casos de uso principales. Todos siguen el mismo recorrido por capas: el
+JwtAuthenticationFilter valida el token, el controlador solo valida el formato (@Valid) y delega en el servicio, que
+aplica las reglas y lanza una PagoException cuando algo no se cumple. El GlobalExceptionHandler la traduce al error
+normalizado (DTO-10).</p>
+<h2>SEC-01. Iniciar pago (CU-01 y CU-09)</h2>
+<p>Incluye los tres caminos de idempotencia y el sorteo. Usuarios y Pedidos se consultan antes de abrir la transacción;
+el aviso a Pedidos y la notificación salen después del commit. Las rutas se muestran sin el prefijo /api/v1.</p>
+<figure class="sec1">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant P as Pedidos
+    participant C as PagoController
+    participant S as PagoService
+    participant R as Repositorios
+    participant U as Usuarios
+    P->>C: POST /api/v1/payments [API-01] DTO-01
+    Note over C: Filtro JWT: firma y rol. @Valid: campos
+    C->>S: iniciarPago(dto) [SRV-01]
+    S->>R: findByClaveControl [REP-01]
+    alt Clave repetida, mismos datos (RN-01, RN-05)
+        S-->>C: pago existente, sin volver a sortear
+        C-->>P: 200 OK (DTO-02)
+    else Clave repetida, datos distintos (RN-01)
+        S-->>C: DUPLICATE_PAYMENT_REQUEST
+        C-->>P: 409 (DTO-10)
+    else Clave nueva: validaciones, sin transacción abierta
+        S->>U: GET /users/{codigoUsuario} [INT-02]
+        U-->>S: usuario activo
+        S->>R: findByCodigoMedioPago [REP-03]
+        S->>P: GET /orders/{id} + X-Cliente-Id [INT-01]
+        P-->>S: estado BORRADOR + total
+        Note over P,S: Si algo no es válido responde 422 (503 si no responden) y no se crea el pago
+    end
+</pre>
+<figcaption>Figura 2a. SEC-01, primera parte: idempotencia y validaciones (CU-01 y CU-09).</figcaption>
+</figure>
+</section>
+
+<section class="apaisada">
+<h2 style="margin-top:0">SEC-01. Iniciar pago, segunda parte: registro, sorteo y avisos</h2>
+<p>Continúa SEC-01 cuando la clave es nueva y la solicitud es válida. El sorteo decide el estado final del pago
+(RN-11); el aviso a Pedidos y la notificación se envían con el cambio ya confirmado en la base.</p>
+<figure class="sec">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber 17
+    participant P as Pedidos
+    participant C as PagoController
+    participant S as PagoService
+    participant A as AutorizadorSimulado
+    participant R as Repositorios
+    participant N as Notificaciones
+    S->>R: save(Pago PENDIENTE) + historial [REP-01, REP-04] (RN-09)
+    Note over S: Commit del alta
+    S->>A: sortear() [SRV-10]
+    A-->>S: resultado + motivo (RN-11)
+    Note over A: 70 % APROBADO, 10 % RECHAZADO, 10 % NO_AUTORIZADO, 10 % ERROR
+    S->>R: cambio de estado + historial (RN-04, RN-09)
+    Note over S: Commit hecho: lo que sigue no revierte el pago
+    S->>P: aviso del resultado del pago [INT-04]
+    alt Pago APROBADO
+        S->>N: POST /notifications, comprobante de pago [INT-03]
+    else Pago RECHAZADO, NO_AUTORIZADO o ERROR
+        S->>N: POST /notifications, aviso con el motivo [INT-03]
+    end
+    S-->>C: PagoResponse (estado, motivo, medio enmascarado)
+    C-->>P: 201 Created + Location (DTO-02)
+</pre>
+<figcaption>Figura 2b. SEC-01, segunda parte: registro, sorteo y avisos (CU-01).</figcaption>
+</figure>
+</section>
+
+<section class="apaisada">
+<h2 style="margin-top:0">SEC-02. Autorizar pago (CU-02, modo manual)</h2>
+<p>Solo se usa con la autorización automática desactivada. Pedidos dispara la aprobación y recibe el resultado en la
+respuesta; con un pago APROBADO confirma el pedido.</p>
+<figure class="sec">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant P as Pedidos
+    participant C as PagoController
+    participant S as PagoService
+    participant R as Repositorios
+    participant N as Notificaciones
+    P->>C: PATCH /payments/{codigoPago}/approve [API-02]
+    Note over C: Filtro JWT: firma y rol SERVICIO_ESCRITURA
+    C->>S: aprobarPago(codigoPago) [SRV-02]
+    S->>R: findByCodigoPago [REP-01]
+    alt Pago inexistente
+        S-->>C: PAYMENT_NOT_FOUND
+        C-->>P: 404 (DTO-10)
+    else Pago ya APROBADO (RN-10)
+        S-->>C: pago sin cambios
+        C-->>P: 200 OK (DTO-02)
+    else Pago en otro estado final (RN-04)
+        S-->>C: PAYMENT_INVALID_STATE
+        C-->>P: 409 (DTO-10)
+    else Pago PENDIENTE
+        S->>R: pago.aprobar() + historial (RN-04, RN-09)
+        Note over S: Commit hecho
+        S->>P: aviso del resultado del pago [INT-04]
+        S->>N: POST /notifications, comprobante [INT-03]
+        S-->>C: PagoResponse APROBADO
+        C-->>P: 200 OK (DTO-02), Pedidos confirma el pedido (RN-03)
+    end
+</pre>
+<figcaption>Figura 3. SEC-02. Autorizar pago (CU-02).</figcaption>
+</figure>
+</section>
+
+<section class="apaisada">
+<h2 style="margin-top:0">SEC-03. Rechazar pago (CU-03, modo manual)</h2>
+<p>Repetir el rechazo sobre un pago ya RECHAZADO devuelve 200 sin cambios (RN-10).</p>
+<figure class="sec">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant P as Pedidos
+    participant C as PagoController
+    participant S as PagoService
+    participant R as Repositorios
+    participant N as Notificaciones
+    P->>C: PATCH /payments/{codigoPago}/reject [API-03] DTO-03
+    Note over C: Filtro JWT: firma y rol SERVICIO_ESCRITURA
+    C->>S: rechazarPago(codigoPago, dto) [SRV-03]
+    S->>R: findByCodigoPago [REP-01]
+    alt Pago inexistente
+        S-->>C: PAYMENT_NOT_FOUND
+        C-->>P: 404 (DTO-10)
+    else Pago ya RECHAZADO (RN-10)
+        S-->>C: pago sin cambios
+        C-->>P: 200 OK (DTO-02)
+    else Pago en otro estado final (RN-04)
+        S-->>C: PAYMENT_INVALID_STATE
+        C-->>P: 409 (DTO-10)
+    else Pago PENDIENTE
+        S->>R: pago.rechazar(motivo) + historial (RN-04, RN-09)
+        Note over S: Commit hecho
+        S->>P: aviso del resultado del pago [INT-04]
+        S->>N: POST /notifications, aviso de rechazo [INT-03]
+        S-->>C: PagoResponse RECHAZADO + motivo
+        C-->>P: 200 OK (DTO-02), el pedido no avanza (RN-03)
+    end
+</pre>
+<figcaption>Figura 4. SEC-03. Rechazar pago (CU-03).</figcaption>
+</figure>
+</section>
+
+<section class="apaisada">
+<h2 style="margin-top:0">SEC-04. Consultar pago (CU-04)</h2>
+<p>La búsqueda es siempre por el código público; un cliente solo puede ver sus propios pagos.</p>
+<figure class="sec">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant A as Portal, Pedidos o Admin
+    participant C as PagoController
+    participant S as PagoService
+    participant R as PagoRepository
+    A->>C: GET /payments/{codigoPago} [API-04]
+    Note over C: Filtro JWT: firma y rol. Arma el JwtPrincipal
+    C->>S: consultarPago(codigoPago, usuario) [SRV-04]
+    S->>R: findByCodigoPago [REP-01]
+    alt Pago inexistente
+        S-->>C: PAYMENT_NOT_FOUND
+        C-->>A: 404 (DTO-10)
+    else Rol CLIENTE y el pago es de otro usuario
+        S-->>C: FORBIDDEN
+        C-->>A: 403 (DTO-10)
+    else Pago propio, ADMINISTRADOR o servicio de lectura
+        S-->>C: PagoResponse (estado, motivo, medio enmascarado)
+        C-->>A: 200 OK (DTO-02)
+    end
+</pre>
+<figcaption>Figura 5. SEC-04. Consultar pago (CU-04).</figcaption>
+</figure>
+</section>
+
+<section class="apaisada">
+<h2 style="margin-top:0">SEC-05. Reembolsar pago (CU-05)</h2>
+<p>Un reembolso parcial deja el pago APROBADO; solo el reembolso total lo pasa a REEMBOLSADO.</p>
+<figure class="sec">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant P as Pedidos o Admin
+    participant C as PagoController
+    participant S as ReembolsoService
+    participant R as Repositorios
+    participant N as Notificaciones
+    P->>C: POST /payments/{codigoPago}/refund [API-05] DTO-04
+    C->>S: reembolsarPago(codigoPago, dto) [SRV-05]
+    S->>R: pago con bloqueo [REP-01], clave y total reembolsado [REP-02]
+    alt Pago inexistente
+        S-->>C: PAYMENT_NOT_FOUND
+        C-->>P: 404 (DTO-10)
+    else Clave repetida, mismos datos (RN-10)
+        S-->>C: reembolso existente
+        C-->>P: 200 OK (DTO-05)
+    else Pago que no está APROBADO (RN-06)
+        S-->>C: PAYMENT_INVALID_STATE
+        C-->>P: 409 (DTO-10)
+    else Monto mayor al disponible (RN-07)
+        S-->>C: REFUND_EXCEEDS_AMOUNT
+        C-->>P: 422 (DTO-10)
+    else Reembolso válido
+        S->>R: save(Reembolso APROBADO) [REP-02]
+        opt El reembolso cubre el total
+            S->>R: pago.marcarReembolsado() + historial (RN-04, RN-09)
+        end
+        Note over S: Commit hecho
+        S->>N: POST /notifications, comprobante [INT-03]
+        S-->>C: ReembolsoResponse (monto disponible)
+        C-->>P: 201 Created (DTO-05)
+    end
+</pre>
+<figcaption>Figura 6. SEC-05. Reembolsar pago (CU-05).</figcaption>
+</figure>
+</section>
+
+<section>
+<h1>Arquitectura del módulo</h1>
+<p>Documentamos la arquitectura con el modelo C4 en tres niveles: el contexto del módulo dentro de DeliveryGo,
+los contenedores que lo componen y los componentes internos de la API de Pagos.</p>
+<h2>Nivel 1: Contexto</h2>
+<figure class="media">
+<pre class="mermaid c4">
+flowchart TB
+    cliente("<b>Cliente</b><br/><i>[Persona]</i><br/>Confirma pedidos y<br/>consulta sus pagos"):::persona
+    admin("<b>Administrador</b><br/><i>[Persona]</i><br/>Audita pagos<br/>y reembolsos"):::persona
+    analista("<b>Analista</b><br/><i>[Persona]</i><br/>Consume métricas"):::persona
+    pedidos("<b>Servicio de Pedidos</b><br/><i>[Sistema externo]</i><br/>Crea pagos y<br/>confirma pedidos"):::externo
+    portal("<b>Portal Web</b><br/><i>[Sistema externo]</i><br/>Cliente web integrador"):::externo
+    analitica("<b>Opiniones y Analítica</b><br/><i>[Sistema externo]</i><br/>Métricas del negocio"):::externo
+    pagos("<b>Módulo de Pagos</b><br/><i>[Sistema]</i><br/>Registra, autoriza (sorteo simulado),<br/>rechaza y reembolsa pagos"):::sistema
+    usuarios("<b>Usuarios y Autenticación</b><br/><i>[Sistema externo]</i><br/>Emite JWT y valida usuarios"):::externo
+    notif("<b>Servicio de Notificaciones</b><br/><i>[Sistema externo]</i><br/>Envía comprobantes y avisos"):::externo
+    cliente -->|Usa| portal
+    admin -->|Usa| portal
+    analista -->|Consulta| analitica
+    pedidos -->|"Crea y reembolsa pagos<br/>[REST/JSON]"| pagos
+    portal -->|"Consulta pagos y gestiona<br/>medios de pago [REST/JSON]"| pagos
+    analitica -->|"Lista pagos<br/>[REST/JSON]"| pagos
+    pagos -.->|"Consulta el total del pedido<br/>y avisa el resultado del pago"| pedidos
+    pagos -->|Valida usuario activo| usuarios
+    pagos -->|"Pide comprobantes<br/>y avisos"| notif
+    classDef persona fill:#08427b,stroke:#052e56,color:#fff
+    classDef externo fill:#999999,stroke:#6b6b6b,color:#fff
+    classDef sistema fill:#1168bd,stroke:#0b4884,color:#fff
+</pre>
+<figcaption>Figura 7. C4 nivel 1, contexto del Módulo de Pagos.</figcaption>
+</figure>
+</section>
+
+<section class="apaisada">
+<h2 style="margin-top:0">Nivel 2: Contenedores</h2>
+<p>El módulo tiene su propia base de datos y nunca accede a tablas de otros módulos. Toda la comunicación es
+REST con JSON y cada request, también el tráfico interno, lleva un JWT en el header Authorization: Bearer.</p>
+<figure class="apaisada">
+<pre class="mermaid c4">
+flowchart TB
+    pedidos("<b>API Pedidos</b><br/><i>[Sistema externo]</i><br/>Spring Boot<br/>Valida JWT + rol"):::externo
+    portal("<b>Portal Web</b><br/><i>[Sistema externo]</i><br/>React + Vite"):::externo
+    usuarios("<b>API Usuarios</b><br/><i>[Sistema externo]</i><br/>Spring Boot<br/>Único emisor de JWT"):::externo
+    notif("<b>API Notificaciones</b><br/><i>[Sistema externo]</i><br/>Spring Boot<br/>Valida JWT + rol"):::externo
+    subgraph modulo ["Módulo de Pagos"]
+        api("<b>API de Pagos</b><br/><i>[Contenedor: Java 25, Spring Boot, Spring Security]</i><br/>Valida JWT + rol localmente (firma)<br/>Expone /api/v1/payments, /api/v1/payment-methods y Swagger UI"):::contenedor
+        bd[("<b>BD de Pagos</b><br/><i>[Base de datos: H2 en memoria]</i><br/>pago, medio_pago, reembolso,<br/>historial_estado_pago")]:::contenedor
+        api -->|"Lee y escribe<br/>[JPA / Hibernate]"| bd
+    end
+    pedidos -->|"Crea y reembolsa pagos<br/>[Bearer JWT de servicio]"| api
+    portal -->|"Consulta pagos y medios de pago<br/>[Bearer JWT de usuario]"| api
+    portal -->|"Login, obtiene<br/>JWT firmado [HTTPS]"| usuarios
+    api -.->|INT-02 GET usuario activo| usuarios
+    api -.->|INT-03 POST notificación| notif
+    api -.->|"INT-01 GET total del pedido<br/>INT-04 aviso del resultado"| pedidos
+    classDef externo fill:#999999,stroke:#6b6b6b,color:#fff
+    classDef contenedor fill:#438dd5,stroke:#0b4884,color:#fff
+    style modulo fill:#ffffff,stroke:#444,stroke-dasharray: 6 4,color:#000
+</pre>
+<figcaption>Figura 8. C4 nivel 2, contenedores del Módulo de Pagos.</figcaption>
+</figure>
+</section>
+
+<section>
+<h2 style="margin-top:0">Nivel 3: Componentes de la API de Pagos</h2>
+<p>La API respeta la separación controller, service y repository. Los controladores no tienen reglas de negocio, las
+transacciones viven en la capa de servicio y solo cubren el acceso a la base (las llamadas a otros módulos quedan
+afuera), y los DTOs son el único formato que cruza la frontera de la API.</p>
+<figure class="alta" style="--h:19.3cm">
+<pre class="mermaid c4">
+flowchart TB
+    consumidores("<b>Pedidos / Portal / Administrador</b><br/><i>[Sistema externo]</i><br/>Consumidores REST"):::externo
+    subgraph api ["API de Pagos (Spring Boot)"]
+        filtro("<b>JwtAuthenticationFilter + SecurityConfig</b><br/><i>[Spring Security]</i><br/>Valida firma del JWT y rol por endpoint"):::componente
+        ctrl("<b>PagoController / MedioPagoController</b><br/><i>[@RestController]</i><br/>Implementan IPagoController e IMedioPagoController (OpenAPI)<br/>Solo validación superficial (@Valid)"):::componente
+        handler("<b>GlobalExceptionHandler</b><br/><i>[@RestControllerAdvice]</i><br/>Traduce excepciones al<br/>error normalizado (DTO-10)"):::componente
+        srv("<b>PagoService / ReembolsoService / MedioPagoService</b><br/><i>[@Service, TransactionTemplate]</i><br/>Reglas de negocio RN-01 a RN-11"):::componente
+        aut("<b>AutorizadorSimulado</b><br/><i>[@Component]</i><br/>Sorteo 70 / 10 / 10 / 10 (RN-11)"):::componente
+        consola("<b>Consola</b><br/><i>[@Component]</i><br/>Imprime los pasos del flujo"):::componente
+        mapper("<b>PagoMapper y DTOs</b><br/><i>[Clases Java]</i><br/>Entity a DTO"):::componente
+        clientes("<b>PedidosClient / UsuariosClient<br/>NotificacionesGateway</b><br/><i>[RestClient]</i><br/>INT-01 a INT-04 con JWT de servicio"):::componente
+        repos("<b>Repositories</b><br/><i>[Spring Data JPA]</i><br/>REP-01 a REP-04"):::componente
+        filtro -->|Request autenticada| ctrl
+        ctrl -.->|Excepciones| handler
+        ctrl -->|DTO de entrada| srv
+        srv -->|Usa| aut
+        srv -->|Usa| consola
+        srv -->|Usa| mapper
+        srv -->|Usa| clientes
+        srv -->|Usa| repos
+    end
+    externas("<b>APIs Pedidos, Usuarios, Notificaciones</b><br/><i>[Sistema externo]</i><br/>Ecosistema DeliveryGo"):::externo
+    bd[("<b>BD de Pagos</b><br/><i>[Base de datos: H2 en memoria]</i>")]:::bd
+    consumidores -->|HTTPS + Bearer JWT| filtro
+    clientes -->|REST/JSON| externas
+    repos -->|JPA / Hibernate| bd
+    classDef externo fill:#999999,stroke:#6b6b6b,color:#fff
+    classDef componente fill:#85bbf0,stroke:#5d82a8,color:#000
+    classDef bd fill:#438dd5,stroke:#0b4884,color:#fff
+    style api fill:#ffffff,stroke:#444,stroke-dasharray: 6 4,color:#000
+</pre>
+<figcaption>Figura 9. C4 nivel 3, componentes de la API de Pagos.</figcaption>
+</figure>
+</section>
+
+<section>
+<h2 style="margin-top:0">Seguridad y autorización por rol</h2>
+<p>Seguimos la arquitectura de seguridad definida para el TPO. El Portal Web se autentica contra la API de
+Usuarios, que es el único emisor de JWT. Desde ahí, cada API del ecosistema recibe el token en el header
+Authorization: Bearer y valida por su cuenta la firma y el rol, sin consultar a Usuarios en cada request. Las
+llamadas entre APIs (por ejemplo, Pedidos hacia Pagos) usan un JWT de servicio con permiso de lectura o de
+escritura que identifica a la API que llama.</p>
+<p>Pagos solo consulta a Usuarios (INT-02) para una verificación de negocio: que el cliente que paga exista y esté
+activo. Esa consulta no reemplaza la validación del token. Si la solicitud no trae un JWT válido, responde 401 con
+el header WWW-Authenticate: Bearer; si el rol no tiene permiso, responde 403. Con un JWT válido, una ruta que no
+existe responde 404 y un método que la ruta no acepta responde 405 con el header Allow.</p>
+<table class="cat">
+<thead><tr><th style="width:9%">API</th><th style="width:45%">Endpoint</th><th>Roles autorizados</th></tr></thead>
+<tbody>
+<tr><td>API-01</td><td>POST /api/v1/payments</td><td>SERVICIO_ESCRITURA (Pedidos)</td></tr>
+<tr><td>API-02</td><td>PATCH /api/v1/payments/{codigoPago}/approve</td><td>SERVICIO_ESCRITURA (Pedidos)</td></tr>
+<tr><td>API-03</td><td>PATCH /api/v1/payments/{codigoPago}/reject</td><td>SERVICIO_ESCRITURA (Pedidos)</td></tr>
+<tr><td>API-04</td><td>GET /api/v1/payments/{codigoPago}</td><td>CLIENTE (solo sus pagos), ADMINISTRADOR, SERVICIO_LECTURA</td></tr>
+<tr><td>API-05</td><td>POST /api/v1/payments/{codigoPago}/refund</td><td>SERVICIO_ESCRITURA (Pedidos), ADMINISTRADOR</td></tr>
+<tr><td>API-06</td><td>GET /api/v1/payments</td><td>ADMINISTRADOR, ANALISTA, SERVICIO_LECTURA (Pedidos, Analítica)</td></tr>
+<tr><td>API-07</td><td>POST /api/v1/payment-methods</td><td>CLIENTE</td></tr>
+<tr><td>API-08</td><td>GET /api/v1/payments/{codigoPago}/history</td><td>ADMINISTRADOR</td></tr>
+<tr><td>API-09</td><td>DELETE /api/v1/payment-methods/{codigoMedioPago}</td><td>CLIENTE (solo sus medios de pago)</td></tr>
+</tbody>
+</table>
+<p>Mientras no esté integrado el Servicio de Usuarios, POST /auth/login simula la emisión del JWT con un único
+usuario de demo (demo / demo123), que corresponde al usuario Ana y tiene los cinco roles. Los roles se siguen
+validando en cada endpoint: en la integración, cada token que emita Usuarios traerá solo los suyos.</p>
+</section>

@@ -2,7 +2,9 @@
 
 Backend Spring Boot 3.5 (Java 25, JPA + H2 en memoria, JWT). Es un módulo **solo backend**: no tiene frontend; la interfaz visual es el Swagger UI (OpenAPI).
 Los pagos son **simulados**: no se procesa dinero real ni se guardan datos reales de tarjetas.
-El contrato sigue el documento de la Entrega 1 corregido (`src/main/java/ar/edu/uade/api/pagos/PDF/`).
+El documento del TPO está en `src/main/java/ar/edu/uade/api/pagos/PDF/`: «actualizado» refleja la implementación actual
+(sorteo, estados, códigos de error, diagramas); «Entrega 1 corregido» es la versión anterior. Las fuentes para
+regenerarlo están en `docs/documento/`.
 
 ## Ejecutar
 

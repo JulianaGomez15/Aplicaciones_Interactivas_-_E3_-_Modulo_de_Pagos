@@ -1,0 +1,233 @@
+<section>
+<h1>Diagrama de clases (UML)</h1>
+<p>El diagrama usa tipos de Java y referencias a objetos; los tipos de base de datos quedan en el DER. Los estados
+y tipos se modelan como enumeraciones. Las reglas que dependen solo del estado del pago (RN-04 y RN-06)
+viven en los métodos de la entidad Pago: resolver() es el único punto donde cambia el estado.</p>
+<figure class="alta">
+<pre class="mermaid">
+classDiagram
+    direction TB
+    class MedioPago {
+        -Long id
+        -UUID codigoMedioPago
+        -UUID codigoUsuario
+        -TipoMedioPago tipo
+        -String detalleEnmascarado
+        -Boolean activo
+        +desactivar() void
+    }
+    class Pago {
+        -Long id
+        -UUID codigoPago
+        -UUID codigoPedido
+        -UUID codigoUsuario
+        -MedioPago medioPago
+        -BigDecimal monto
+        -String moneda
+        -EstadoPago estado
+        -String motivoEstado
+        -String claveControl
+        -Long version
+        -LocalDateTime fechaCreacion
+        -LocalDateTime fechaActualizacion
+        -List~Reembolso~ reembolsos
+        -List~HistorialEstadoPago~ historial
+        +aprobar() void
+        +rechazar(String motivo) void
+        +resolver(EstadoPago destino, String motivo) void
+        +marcarReembolsado() void
+        +puedeReembolsarse() boolean
+    }
+    class Reembolso {
+        -Long id
+        -UUID codigoReembolso
+        -Pago pago
+        -BigDecimal monto
+        -String motivo
+        -EstadoReembolso estado
+        -String claveControl
+        -LocalDateTime fechaSolicitud
+        -LocalDateTime fechaResolucion
+    }
+    class HistorialEstadoPago {
+        -Long id
+        -UUID codigoHistorial
+        -Pago pago
+        -EstadoPago estadoAnterior
+        -EstadoPago estadoNuevo
+        -String motivo
+        -LocalDateTime fecha
+    }
+    class EstadoPago {
+        &lt;&lt;enumeration&gt;&gt;
+        PENDIENTE
+        APROBADO
+        RECHAZADO
+        NO_AUTORIZADO
+        ERROR
+        REEMBOLSADO
+        +permiteTransicionA(EstadoPago) boolean
+    }
+    class TipoMedioPago {
+        &lt;&lt;enumeration&gt;&gt;
+        TARJETA_CREDITO
+        TARJETA_DEBITO
+        BILLETERA_VIRTUAL
+        TRANSFERENCIA
+    }
+    class EstadoReembolso {
+        &lt;&lt;enumeration&gt;&gt;
+        APROBADO
+    }
+    class ResultadoAutorizacion {
+        &lt;&lt;enumeration&gt;&gt;
+        APROBADO
+        FONDOS_INSUFICIENTES
+        NO_AUTORIZADO
+        ERROR
+        +getEstado() EstadoPago
+    }
+    MedioPago "1" &lt;-- "0..*" Pago : REL-02 utiliza
+    Pago "1" *-- "0..*" Reembolso : REL-01 origina
+    Pago "1" *-- "0..*" HistorialEstadoPago : REL-03 tiene
+    MedioPago ..&gt; TipoMedioPago
+    Pago ..&gt; EstadoPago
+    Reembolso ..&gt; EstadoReembolso
+    HistorialEstadoPago ..&gt; EstadoPago
+    ResultadoAutorizacion ..&gt; EstadoPago : resultado del sorteo
+</pre>
+<figcaption>Figura 10. Diagrama de clases del Módulo de Pagos.</figcaption>
+</figure>
+</section>
+
+<section>
+<h1>Reglas de negocio - Tabla</h1>
+<table class="cat">
+<thead><tr><th style="width:8%">ID</th><th style="width:36%">Regla</th><th style="width:20%">CU relacionados</th><th>Dónde se implementa</th></tr></thead>
+<tbody>
+<tr><td>RN-01</td><td>Misma clave y mismos datos devuelve el pago existente; misma clave con datos distintos, 409.</td><td>CU-01, CU-09</td><td>SRV-01 / REP-01 (UNIQUE sobre clave_control)</td></tr>
+<tr><td>RN-02</td><td>El importe coincide con el total del pedido.</td><td>CU-01</td><td>SRV-01 / INT-01</td></tr>
+<tr><td>RN-03</td><td>Solo un pago APROBADO hace avanzar el pedido.</td><td>CU-01, CU-02, CU-03</td><td>SRV-01, SRV-02, SRV-03 / contrato de API-01 a API-03 / INT-04</td></tr>
+<tr><td>RN-04</td><td>Transiciones válidas de estado.</td><td>CU-01, CU-02, CU-03, CU-05</td><td>ENT-01 Pago (resolver) / EstadoPago (permiteTransicionA)</td></tr>
+<tr><td>RN-05</td><td>Un pago rechazado, no autorizado o en error se reintenta con una clave nueva.</td><td>CU-01, CU-03, CU-07, CU-09</td><td>SRV-01 / REP-01</td></tr>
+<tr><td>RN-06</td><td>Solo se reembolsa un pago APROBADO.</td><td>CU-05</td><td>SRV-05 / ENT-01 (puedeReembolsarse)</td></tr>
+<tr><td>RN-07</td><td>Los reembolsos no superan el monto aprobado.</td><td>CU-05</td><td>SRV-05 / REP-02</td></tr>
+<tr><td>RN-08</td><td>Solo se guarda el detalle enmascarado del medio de pago.</td><td>CU-01, CU-04, CU-06, CU-08, CU-11</td><td>SRV-07 / ENT-03 MedioPago / DTO-02, DTO-08</td></tr>
+<tr><td>RN-09</td><td>Cada cambio de estado queda en el historial.</td><td>CU-01, CU-02, CU-03, CU-05, CU-10</td><td>SRV-01, SRV-02, SRV-03, SRV-05 / REP-04</td></tr>
+<tr><td>RN-10</td><td>Repetir una operación ya aplicada no genera efectos; una incompatible responde 409.</td><td>CU-02, CU-03, CU-05</td><td>SRV-02, SRV-03, SRV-05 / REP-02</td></tr>
+<tr><td>RN-11</td><td>La autorización se resuelve por sorteo: 70 % aprobado, 10 % fondos insuficientes, 10 % no autorizado, 10 % error.</td><td>CU-01</td><td>SRV-10 AutorizadorSimulado / SRV-01</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h1>Diagrama Entidad – Relación (DER)</h1>
+<p>Cada tabla tiene un id interno autoincremental, de tipo bigint, que solo se usa para relaciones internas y
+búsquedas más rápidas, y una columna código, de tipo uuid con restricción UNIQUE, que es la que se expone
+en la API. Las referencias a otros módulos (codigo_pedido, codigo_usuario) se guardan como UUID sin clave
+foránea, porque cada módulo tiene su propia base de datos.</p>
+<figure class="alta" style="--h:19cm">
+<pre class="mermaid">
+erDiagram
+    MEDIO_PAGO ||--o{ PAGO : "es utilizado en (REL-02)"
+    PAGO ||--o{ REEMBOLSO : "origina (REL-01)"
+    PAGO ||--o{ HISTORIAL_ESTADO_PAGO : "tiene (REL-03)"
+    MEDIO_PAGO {
+        bigint id PK "interno, no se expone"
+        uuid codigo_medio_pago UK "identificador público"
+        uuid codigo_usuario "referencia externa a Usuarios"
+        varchar tipo "TipoMedioPago"
+        varchar detalle_enmascarado "ej. ****4242"
+        boolean activo "false = dado de baja"
+    }
+    PAGO {
+        bigint id PK "interno, no se expone"
+        uuid codigo_pago UK "identificador público (API)"
+        uuid codigo_pedido "referencia externa a Pedidos"
+        uuid codigo_usuario "referencia externa a Usuarios"
+        bigint medio_pago_id FK
+        numeric monto "precision 12, scale 2"
+        varchar moneda
+        varchar estado "EstadoPago"
+        varchar motivo_estado "motivo si no se aprobó"
+        varchar clave_control UK "idempotencia"
+        bigint version "bloqueo optimista"
+        timestamp fecha_creacion
+        timestamp fecha_actualizacion
+    }
+    REEMBOLSO {
+        bigint id PK
+        uuid codigo_reembolso UK
+        bigint pago_id FK
+        numeric monto
+        varchar motivo
+        varchar estado "EstadoReembolso"
+        varchar clave_control UK "idempotencia"
+        timestamp fecha_solicitud
+        timestamp fecha_resolucion
+    }
+    HISTORIAL_ESTADO_PAGO {
+        bigint id PK
+        uuid codigo_historial UK
+        bigint pago_id FK
+        varchar estado_anterior "null en el alta"
+        varchar estado_nuevo
+        varchar motivo
+        timestamp fecha
+    }
+</pre>
+<figcaption>Figura 11. Diagrama Entidad – Relación del Módulo de Pagos.</figcaption>
+</figure>
+</section>
+
+<section>
+<h1>Relaciones JPA</h1>
+<p>No hay relaciones @OneToOne ni @ManyToMany. El lado dueño de cada relación es la entidad que tiene la
+clave foránea (@JoinColumn).</p>
+<table class="cat">
+<thead><tr><th style="width:8%">ID</th><th style="width:19%">Relación</th><th style="width:11%">Multiplicidad</th><th style="width:30%">Mapeo JPA</th><th>Lado dueño</th><th style="width:7%">Fetch</th></tr></thead>
+<tbody>
+<tr><td>REL-01</td><td>Pago – Reembolso</td><td>1 a 0..*</td><td>@OneToMany(mappedBy = "pago") en Pago / @ManyToOne en Reembolso</td><td>Reembolso (@JoinColumn pago_id)</td><td>LAZY</td></tr>
+<tr><td>REL-02</td><td>MedioPago – Pago</td><td>1 a 0..*</td><td>@ManyToOne en Pago (unidireccional)</td><td>Pago (@JoinColumn medio_pago_id)</td><td>LAZY</td></tr>
+<tr><td>REL-03</td><td>Pago – HistorialEstadoPago</td><td>1 a 0..*</td><td>@OneToMany(mappedBy = "pago") en Pago / @ManyToOne en HistorialEstadoPago</td><td>HistorialEstadoPago (@JoinColumn pago_id)</td><td>LAZY</td></tr>
+</tbody>
+</table>
+
+<h1 style="margin-top:16pt">Persistencia con JPA</h1>
+<p>Usamos JPA como especificación y Hibernate como implementación, sobre H2 en memoria (DEC-11). El código
+UUID de cada entidad se genera en @PrePersist y las fechas de creación y actualización se completan con
+@PrePersist y @PreUpdate.</p>
+<table class="cat">
+<thead><tr><th style="width:19%">Entidad</th><th style="width:17%">Tabla</th><th>Mapeo principal</th></tr></thead>
+<tbody>
+<tr><td>ENT-01 Pago</td><td>pago</td><td>@Id @GeneratedValue(IDENTITY) id. codigoPago UUID único, no nulo y no
+actualizable. monto BigDecimal (precision 12, scale 2). estado con @Enumerated(STRING). motivoEstado, nulo
+mientras está PENDIENTE o si quedó APROBADO. claveControl única. @Version version. @ManyToOne(LAZY) medioPago.
+@OneToMany(mappedBy = "pago") reembolsos e historial.</td></tr>
+<tr><td>ENT-02 Reembolso</td><td>reembolso</td><td>@Id id. codigoReembolso UUID único. @ManyToOne(LAZY)
+@JoinColumn("pago_id") pago. monto BigDecimal. estado con @Enumerated(STRING). claveControl única.</td></tr>
+<tr><td>ENT-03 MedioPago</td><td>medio_pago</td><td>@Id id. codigoMedioPago UUID único. codigoUsuario UUID como
+referencia externa, sin FK. tipo con @Enumerated(STRING). detalleEnmascarado. activo (la baja es lógica).</td></tr>
+<tr><td style="white-space:normal">ENT-04 HistorialEstadoPago</td><td>historial_estado_pago</td><td>@Id id.
+codigoHistorial UUID único. @ManyToOne(LAZY) @JoinColumn("pago_id") pago. estadoAnterior y estadoNuevo con
+@Enumerated(STRING). motivo. fecha.</td></tr>
+</tbody>
+</table>
+
+<h2>Repositorios</h2>
+<p>Cada repositorio extiende de JpaRepository y encapsula el acceso a datos de una entidad. Las búsquedas que
+se exponen hacia afuera son siempre por código público; el id interno solo se usa dentro del módulo.</p>
+<table class="cat">
+<thead><tr><th style="width:8%">ID</th><th style="width:22%">Repositorio</th><th style="width:16%">Entidad</th><th>Qué resuelve</th><th style="width:16%">Lo usan</th></tr></thead>
+<tbody>
+<tr><td>REP-01</td><td>PagoRepository</td><td>Pago</td><td>Busca un pago por su código público o por su clave de
+control (idempotencia), lo busca con bloqueo para los reembolsos y lista pagos con filtros y paginación.</td><td>SRV-01 a SRV-06, SRV-08</td></tr>
+<tr><td>REP-02</td><td>ReembolsoRepository</td><td>Reembolso</td><td>Guarda reembolsos, los busca por clave de control y
+suma lo ya reembolsado de un pago.</td><td>SRV-05</td></tr>
+<tr><td>REP-03</td><td>MedioPagoRepository</td><td>MedioPago</td><td>Guarda medios de pago y los busca por su código
+público.</td><td>SRV-01, SRV-07, SRV-09</td></tr>
+<tr><td>REP-04</td><td style="white-space:normal">HistorialEstadoPagoRepository</td><td>HistorialEstadoPago</td><td>Registra los cambios de
+estado y devuelve la línea de tiempo de un pago ordenada por fecha.</td><td>SRV-01, SRV-02, SRV-03, SRV-05, SRV-08</td></tr>
+</tbody>
+</table>
+</section>
