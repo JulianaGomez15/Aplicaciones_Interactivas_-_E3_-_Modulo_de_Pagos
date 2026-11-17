@@ -86,7 +86,7 @@ class OpenApiContractTest {
         assertEquals(Set.of("/api/v1/payments", "/api/v1/payments/{codigoPago}",
                         "/api/v1/payments/{codigoPago}/approve", "/api/v1/payments/{codigoPago}/reject",
                         "/api/v1/payments/{codigoPago}/refund", "/api/v1/payments/{codigoPago}/history",
-                        "/api/v1/payment-methods", "/api/v1/payment-methods/{codigoMedioPago}", "/auth/login"),
+                        "/api/v1/payment-methods", "/api/v1/payment-methods/{codigoMedioPago}", "/auth/login", "/status"),
                 paths.keySet());
     }
 
