@@ -208,6 +208,34 @@ class PagosApiTest {
                 .andExpect(jsonPath("$.totalElements", is(1)));
     }
 
+
+    @Test
+    void unPedidoNoSePagaDosVeces() throws Exception {
+        String pedidos = pedidos();
+        String medio = registrarMedio(clienteAna(), "4111111111111111");
+        UUID pedido = PedidosClientSimulado.PEDIDO_3;
+
+        // Primer pago: queda PENDIENTE (en estos tests la autorizacion es manual)
+        String creado = send(post(PAGOS), pedidos, crearPagoJson(pedido, ANA, medio, "32000.00", "doble-1"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String codigo = JsonPath.read(creado, "$.codigoPago");
+
+        // Otra clave para el mismo pedido: rechazado, el pedido ya tiene un pago vivo
+        send(post(PAGOS), pedidos, crearPagoJson(pedido, ANA, medio, "32000.00", "doble-2"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code", is("ORDER_NOT_PAYABLE")));
+
+        // La misma clave sigue siendo idempotente: 200 con el pago original
+        send(post(PAGOS), pedidos, crearPagoJson(pedido, ANA, medio, "32000.00", "doble-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.codigoPago", is(codigo)));
+
+        // Si el primer pago se rechaza, el pedido se puede volver a pagar con otra clave
+        send(patch(PAGOS + "/" + codigo + "/reject"), pedidos, null).andExpect(status().isOk());
+        send(post(PAGOS), pedidos, crearPagoJson(pedido, ANA, medio, "32000.00", "doble-3"))
+                .andExpect(status().isCreated());
+    }
     @Test
     void pagoRechazadoSeReintentaConClaveNueva() throws Exception {
         String pedidos = pedidos();

@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 
 import java.math.BigDecimal;
 import java.util.EnumMap;
@@ -100,6 +101,7 @@ class AutorizacionSimuladaTest {
     @SpringBootTest(properties = {"integraciones.modo=simulado", "autorizacion.peso.aprobado=1",
             "autorizacion.peso.fondos-insuficientes=0", "autorizacion.peso.no-autorizado=0",
             "autorizacion.peso.error=0"})
+    @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
     class SiempreAprobado extends Base {
 
         @Test

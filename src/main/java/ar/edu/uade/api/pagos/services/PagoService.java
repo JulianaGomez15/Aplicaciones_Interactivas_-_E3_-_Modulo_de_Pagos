@@ -209,6 +209,15 @@ public class PagoService {
                     "El monto " + monto + " no coincide con el total del pedido " + pedido.getTotal());
         }
         consola.ok("VALIDACION", "El monto coincide con el total del pedido");
+
+        // RN-03: un pedido no se puede pagar dos veces. Si ya tiene un pago PENDIENTE o APROBADO (con otra clave),
+        // no se crea otro. Despues de un RECHAZADO, NO_AUTORIZADO o ERROR si se puede reintentar.
+        if (pagoRepository.existsByCodigoPedidoAndEstadoInAndClaveControlNot(dto.getCodigoPedido(),
+                List.of(EstadoPago.PENDIENTE, EstadoPago.APROBADO), dto.getClaveControl())) {
+            throw new PagoException(ErrorCode.ORDER_NOT_PAYABLE,
+                    "El pedido ya tiene un pago pendiente o aprobado: " + dto.getCodigoPedido());
+        }
+        consola.ok("VALIDACION", "El pedido no tiene otro pago pendiente ni aprobado");
         return medioPago;
     }
 
